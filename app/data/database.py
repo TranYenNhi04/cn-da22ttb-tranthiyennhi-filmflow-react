@@ -1,0 +1,624 @@
+import sqlite3
+import os
+import pandas as pd
+import datetime
+
+
+# Simple SQLite-backed storage for interactions/ratings/reviews
+DB_FILENAME = 'app.db'
+
+
+def _db_path(data_dir=None):
+    if data_dir is None:
+        data_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(data_dir, DB_FILENAME)
+
+
+def init_db(data_dir=None):
+    """Initialize SQLite DB and import existing CSVs if tables are empty."""
+    db_path = _db_path(data_dir)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    cur = conn.cursor()
+
+    # Create tables
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT,
+            movieId INTEGER,
+            rating REAL,
+            timestamp TEXT
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            movieId INTEGER,
+            userId TEXT,
+            rating REAL,
+            review TEXT,
+            timestamp TEXT
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT,
+            movieId INTEGER,
+            action TEXT,
+            timestamp TEXT
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            movieId INTEGER,
+            userId TEXT,
+            comment TEXT,
+            timestamp TEXT
+        )
+        """
+    )
+
+    # Create users and items tables
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            created_at TEXT,
+            metadata TEXT
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS items (
+            movieId INTEGER PRIMARY KEY,
+            title TEXT,
+            metadata TEXT
+        )
+        """
+    )
+
+    # Watchlist table - Track user's saved movies
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT,
+            movieId INTEGER,
+            added_at TEXT,
+            UNIQUE(userId, movieId)
+        )
+        """
+    )
+
+    # Watch history table - Track viewing progress
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watch_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT,
+            movieId INTEGER,
+            timestamp_watched INTEGER,
+            duration INTEGER,
+            viewed_at TEXT
+        )
+        """
+    )
+
+    conn.commit()
+
+    # Create indexes to speed up interaction/rating lookups
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_interactions_user ON interactions(userId)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_interactions_movie ON interactions(movieId)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(userId)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(userId)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(userId)")
+        conn.commit()
+    except Exception:
+        # non-fatal
+        pass
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(userId)")
+        conn.commit()
+    except Exception:
+        # non-fatal
+        pass
+
+    # Import CSVs if present and table empty
+    try:
+        # ratings
+        cur.execute("SELECT count(1) FROM ratings")
+        if cur.fetchone()[0] == 0:
+            ratings_csv = os.path.join(os.path.dirname(_db_path(data_dir)), 'ratings_processed.csv')
+            if os.path.exists(ratings_csv):
+                df = pd.read_csv(ratings_csv)
+                if 'timestamp' not in df.columns:
+                    df['timestamp'] = ''
+                records = df[['userId', 'movieId', 'rating', 'timestamp']].values.tolist()
+                cur.executemany("INSERT INTO ratings (userId,movieId,rating,timestamp) VALUES (?,?,?,?)", records)
+                conn.commit()
+
+        # reviews
+        cur.execute("SELECT count(1) FROM reviews")
+        if cur.fetchone()[0] == 0:
+            reviews_csv = os.path.join(os.path.dirname(_db_path(data_dir)), 'reviews.csv')
+            if os.path.exists(reviews_csv):
+                df = pd.read_csv(reviews_csv)
+                # Ensure columns
+                if 'timestamp' not in df.columns:
+                    df['timestamp'] = ''
+                # Normalize column names if different ordering
+                cols = [c for c in ['movieId', 'userId', 'rating', 'review', 'timestamp'] if c in df.columns]
+                if cols:
+                    records = df[cols].fillna('').values.tolist()
+                    # Build insertion per-row to avoid column mismatch
+                    for row in records:
+                        # Pad row to 5 elements
+                        while len(row) < 5:
+                            row = list(row) + ['']
+                        cur.execute(
+                            "INSERT INTO reviews (movieId,userId,rating,review,timestamp) VALUES (?,?,?,?,?)",
+                            (row[0], row[1], row[2], row[3], row[4]),
+                        )
+                    conn.commit()
+    except Exception as e:
+        print(f"[db] Warning during CSV import: {e}")
+
+    return conn
+
+
+
+def get_connection(data_dir=None):
+    db_path = _db_path(data_dir)
+    if not os.path.exists(db_path):
+        # ensure db is created
+        init_db(data_dir)
+    return sqlite3.connect(db_path, check_same_thread=False)
+
+
+def fetch_ratings_df(data_dir=None):
+    conn = get_connection(data_dir)
+    try:
+        df = pd.read_sql_query("SELECT userId, movieId, rating, timestamp FROM ratings", conn)
+    finally:
+        conn.close()
+    return df
+
+
+def fetch_reviews_df(data_dir=None):
+    conn = get_connection(data_dir)
+    try:
+        df = pd.read_sql_query("SELECT movieId, userId, rating, review, timestamp FROM reviews", conn)
+    finally:
+        conn.close()
+    return df
+
+
+def insert_review(movie_id, user_id, rating, review_text, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO reviews (movieId,userId,rating,review,timestamp) VALUES (?,?,?,?,?)",
+        (movie_id, user_id, rating, review_text, timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_rating(movie_id, user_id, rating, timestamp=None, data_dir=None):
+    """Insert a rating into the ratings table (also records as an interaction)."""
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO ratings (userId,movieId,rating,timestamp) VALUES (?,?,?,?)",
+        (user_id, movie_id, rating, timestamp),
+    )
+    # Also insert into interactions for event logging
+    cur.execute(
+        "INSERT INTO interactions (userId,movieId,action,timestamp) VALUES (?,?,?,?)",
+        (user_id, movie_id, 'rating', timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_user(user_id, metadata=None, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT OR IGNORE INTO users (id,created_at,metadata) VALUES (?,?,?)",
+            (user_id, timestamp, metadata or ''),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def insert_item(movie_id, title=None, metadata=None, data_dir=None):
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT OR REPLACE INTO items (movieId,title,metadata) VALUES (?,?,?)",
+            (movie_id, title or '', metadata or ''),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_view(user_id, movie_id, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO interactions (userId,movieId,action,timestamp) VALUES (?,?,?,?)",
+        (user_id, movie_id, 'view', timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def record_click(user_id, movie_id, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO interactions (userId,movieId,action,timestamp) VALUES (?,?,?,?)",
+        (user_id, movie_id, 'click', timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user(user_id, data_dir=None):
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id,created_at,metadata FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {'id': row[0], 'created_at': row[1], 'metadata': row[2]}
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email, data_dir=None):
+    """Find user by email stored inside metadata (metadata is JSON string)."""
+    import json
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id,created_at,metadata FROM users")
+        rows = cur.fetchall()
+        for r in rows:
+            uid, created_at, metadata = r
+            if not metadata:
+                continue
+            try:
+                md = json.loads(metadata)
+                if md.get('email') == email:
+                    return {'id': uid, 'created_at': created_at, 'metadata': metadata}
+            except Exception:
+                # try simple substring match as fallback
+                if f'"email":"{email}"' in metadata.replace(' ', ''):
+                    return {'id': uid, 'created_at': created_at, 'metadata': metadata}
+        return None
+    finally:
+        conn.close()
+
+
+def get_item(movie_id, data_dir=None):
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT movieId,title,metadata FROM items WHERE movieId=?", (movie_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {'movieId': row[0], 'title': row[1], 'metadata': row[2]}
+    finally:
+        conn.close()
+
+
+def insert_interaction(user_id, movie_id, action, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO interactions (userId,movieId,action,timestamp) VALUES (?,?,?,?)",
+        (user_id, movie_id, action, timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_comment(movie_id, user_id, comment_text, timestamp=None, data_dir=None):
+    if timestamp is None:
+        timestamp = datetime.datetime.now().isoformat()
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO comments (movieId,userId,comment,timestamp) VALUES (?,?,?,?)",
+        (movie_id, user_id, comment_text, timestamp),
+    )
+    conn.commit()
+    conn.close()
+
+
+def fetch_comments(movie_id, limit=50, offset=0, data_dir=None):
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        sql = "SELECT id,movieId,userId,comment,timestamp FROM comments WHERE movieId=? ORDER BY id DESC LIMIT ? OFFSET ?"
+        cur.execute(sql, (movie_id, limit, offset))
+        rows = cur.fetchall()
+        return [ { 'id': r[0], 'movieId': r[1], 'userId': r[2], 'comment': r[3], 'timestamp': r[4] } for r in rows ]
+    finally:
+        conn.close()
+
+
+def fetch_comment_counts(movie_ids, data_dir=None):
+    """Return a dict {movieId: count} for given iterable of movie_ids."""
+    if not movie_ids:
+        return {}
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        # build placeholders
+        placeholders = ','.join(['?'] * len(movie_ids))
+        sql = f"SELECT movieId, COUNT(1) as cnt FROM comments WHERE movieId IN ({placeholders}) GROUP BY movieId"
+        cur.execute(sql, tuple(movie_ids))
+        rows = cur.fetchall()
+        return { r[0]: r[1] for r in rows }
+    finally:
+        conn.close()
+
+
+def get_user_display_name(user_id, data_dir=None):
+    """Return a best-effort display name for a userId by reading users.metadata JSON.
+
+    Falls back to user_id if no metadata/name available.
+    """
+    try:
+        conn = get_connection(data_dir)
+        cur = conn.cursor()
+        cur.execute("SELECT metadata FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return user_id
+        import json
+        try:
+            md = json.loads(row[0])
+            name = md.get('name') or md.get('displayName') or md.get('email')
+            if name:
+                return name
+        except Exception:
+            # metadata not JSON, try to parse simple email
+            txt = row[0]
+            if '@' in txt:
+                return txt.split('@')[0]
+        return user_id
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def fetch_interactions(user_id=None, movie_id=None, limit=None, data_dir=None):
+    """Return a list of interactions filtered by user_id and/or movie_id ordered by id desc.
+
+    Accepts `limit` to return only the most recent N rows for faster queries.
+    """
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        sql = "SELECT userId, movieId, action, timestamp FROM interactions WHERE 1=1"
+        params = []
+        if user_id:
+            sql += " AND userId=?"
+            params.append(user_id)
+        if movie_id is not None:
+            sql += " AND movieId=?"
+            params.append(movie_id)
+        sql += " ORDER BY id DESC"
+        if limit is not None and isinstance(limit, int) and limit > 0:
+            sql += " LIMIT ?"
+            params.append(limit)
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        return [ { 'userId': r[0], 'movieId': r[1], 'action': r[2], 'timestamp': r[3] } for r in rows ]
+    finally:
+        conn.close()
+
+
+# ==================== WATCHLIST FUNCTIONS ====================
+
+def add_to_watchlist(user_id, movie_id, data_dir=None):
+    """Thêm phim vào watchlist của user."""
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT OR IGNORE INTO watchlist (userId, movieId, added_at) VALUES (?, ?, ?)",
+            (user_id, movie_id, datetime.datetime.now().isoformat())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error adding to watchlist: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_from_watchlist(user_id, movie_id, data_dir=None):
+    """Xóa phim khỏi watchlist."""
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM watchlist WHERE userId=? AND movieId=?", (user_id, movie_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error removing from watchlist: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_watchlist(user_id, data_dir=None):
+    """Lấy watchlist của user."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT movieId, added_at FROM watchlist WHERE userId=? ORDER BY added_at DESC",
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        return [{"movieId": r[0], "added_at": r[1]} for r in rows]
+    finally:
+        conn.close()
+
+
+def is_in_watchlist(user_id, movie_id, data_dir=None):
+    """Check if movie is in user's watchlist."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM watchlist WHERE userId=? AND movieId=?", (user_id, movie_id))
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+# ==================== WATCH HISTORY FUNCTIONS ====================
+
+def insert_watch_history(user_id, movie_id, timestamp_watched=None, duration=None, data_dir=None):
+    """Ghi lại lịch sử xem phim."""
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO watch_history (userId, movieId, timestamp_watched, duration, viewed_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, movie_id, timestamp_watched, duration, datetime.datetime.now().isoformat())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error inserting watch history: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def fetch_watch_history(user_id, limit=50, data_dir=None):
+    """Lấy lịch sử xem của user, mới nhất trước."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT movieId, timestamp_watched, duration, viewed_at FROM watch_history WHERE userId=? ORDER BY viewed_at DESC LIMIT ?",
+            (user_id, limit)
+        )
+        rows = cur.fetchall()
+        return [{
+            "movieId": r[0],
+            "timestamp_watched": r[1],
+            "duration": r[2],
+            "viewed_at": r[3]
+        } for r in rows]
+    finally:
+        conn.close()
+
+
+def get_trending_movies(limit=20, data_dir=None):
+    """Lấy phim trending dựa trên interactions gần đây."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        # Get most interacted movies in last 7 days
+        cur.execute("""
+            SELECT movieId, COUNT(*) as interaction_count 
+            FROM interactions 
+            WHERE datetime(timestamp) > datetime('now', '-7 days')
+            GROUP BY movieId 
+            ORDER BY interaction_count DESC 
+            LIMIT ?
+        """, (limit,))
+        rows = cur.fetchall()
+        return [{"movieId": r[0], "interaction_count": r[1]} for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def update_user_metadata(user_id, metadata, data_dir=None):
+    """Update user metadata (preferences, settings)."""
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        # Try update first, if not exists then insert
+        cur.execute(
+            "UPDATE users SET metadata=? WHERE id=?",
+            (metadata, user_id)
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO users (id, metadata, created_at) VALUES (?, ?, ?)",
+                (user_id, metadata, datetime.datetime.now().isoformat())
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error updating user metadata: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_metadata(user_id, data_dir=None):
+    """Get user metadata (preferences, settings)."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT metadata FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        if row and row[0]:
+            try:
+                import json
+                return json.loads(row[0])
+            except:
+                return {}
+        return {}
+    finally:
+        conn.close()
+

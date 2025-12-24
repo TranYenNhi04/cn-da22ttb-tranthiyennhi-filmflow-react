@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pandas
+scikit-learn
+numpy
+google-api-python-client
+python-dotenv
+requests

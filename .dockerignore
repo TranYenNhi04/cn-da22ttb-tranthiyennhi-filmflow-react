@@ -1,0 +1,15 @@
+# Loại trừ các thư mục node_modules và môi trường ảo Python (nếu có)
+node_modules
+.venv
+
+# Loại trừ các tệp log, debug, và các tệp không cần thiết khác
+npm-debug.log
+docker-compose.override.yml
+Dockerfile.*
+.git
+.gitignore
+
+# Loại trừ tất cả các tệp tạm thời hoặc những tệp không cần thiết
+*.log
+*.swp
+*.bak

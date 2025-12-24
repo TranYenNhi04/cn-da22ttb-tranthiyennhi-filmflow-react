@@ -1,0 +1,14 @@
+# Ignore environment files
+.env
+
+# Python venv
+.venv/
+
+# Cache
+__pycache__/
+
+# VS Code
+.vscode/
+
+# Compiled files
+*.pyc

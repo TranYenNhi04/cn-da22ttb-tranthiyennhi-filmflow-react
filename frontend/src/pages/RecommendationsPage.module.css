@@ -1,0 +1,1181 @@
+/* RecommendationsPage.module.css - Modern Design */
+
+/* -------------------- SKELETON LOADING -------------------- */
+
+.movieCardSkeleton {
+    background: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
+    min-width: 180px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.skeletonPoster {
+    width: 100%;
+    height: 270px;
+    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+.skeletonText {
+    height: 16px;
+    margin: 12px;
+    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+.skeletonTitle {
+    height: 32px;
+    width: 300px;
+    margin-bottom: 20px;
+    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* -------------------- MAIN CONTENT -------------------- */
+
+.mainContent {
+    background: linear-gradient(180deg, #0a0a0a 0%, #1a0f2e 50%, #0a0a0a 100%);
+    color: #E5E5E5;
+    min-height: 100vh;
+    padding: 20px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    position: relative;
+    overflow-x: hidden;
+}
+
+.mainContent::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(255, 193, 7, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* -------------------- HEADER & CONTROLS -------------------- */
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+    position: relative;
+    z-index: 1;
+    animation: fadeInDown 0.8s ease-out;
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pageHeader {
+    font-size: 2.8rem;
+    font-weight: 900;
+    color: #FFF;
+    letter-spacing: -1.5px;
+    text-shadow: 3px 3px 12px rgba(0, 0, 0, 0.5);
+}
+
+.controlToggleBtn {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #E5E5E5;
+    padding: 12px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.controlToggleBtn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 193, 7, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* -------------------- FORM NÂNG CAO (Ẩn) -------------------- */
+
+.cardBox.recommendationForm {
+    background: rgba(26, 26, 26, 0.7);
+    backdrop-filter: blur(20px);
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    margin-bottom: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: fadeInUp 0.8s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cardBox h2 {
+    color: #FFF;
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+.formGroup {
+    margin-bottom: 15px;
+}
+
+.cardBox label {
+    color: #B3B3B3; 
+    font-weight: 400;
+}
+
+.cardBox select,
+.cardBox input {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    color: #FFF;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    max-width: 280px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cardBox select:focus,
+.cardBox input:focus {
+    border-color: rgba(255, 193, 7, 0.6);
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.1);
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+}
+
+.btn {
+    padding: 14px 32px;
+    background: linear-gradient(135deg, #ffc107 0%, #ffdd47 100%);
+    color: #0a0a0a;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
+}
+
+.btn:hover {
+    background: linear-gradient(135deg, #ffdd47 0%, #ffc107 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(255, 193, 7, 0.6);
+}
+
+.btn:active {
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    background: rgba(85, 85, 85, 0.5);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* -------------------- HIỂN THỊ LỖI & LOADING -------------------- */
+
+.error {
+    background: rgba(255, 193, 7, 0.15);
+    backdrop-filter: blur(10px);
+    color: #ffc107;
+    padding: 18px 24px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.2);
+    animation: shake 0.5s;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+}
+
+.loading {
+    text-align: center;
+    color: #B3B3B3;
+    padding: 30px;
+    font-size: 1.2rem;
+}
+
+/* -------------------- CAROUSEL (HÀNG PHIM) -------------------- */
+
+.rowTitle {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #FFF;
+    margin-bottom: 15px;
+    margin-top: 40px;
+}
+
+.movieRow {
+    /* GRID - Hiển thị dọc */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    padding-bottom: 20px;
+}
+
+/* -------------------- THẺ PHIM (MOVIE CARD) -------------------- */
+
+.movieCard {
+    background: rgba(26, 26, 26, 0.6);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.movieCard:hover {
+    transform: translateY(-12px) scale(1.03);
+    box-shadow: 
+        0 20px 40px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 193, 7, 0.3),
+        0 0 30px rgba(255, 193, 7, 0.2);
+    z-index: 10;
+    border-color: rgba(255, 193, 7, 0.3);
+}
+
+/* Poster Container & Image */
+.moviePosterContainer {
+    width: 100%;
+    /* Tỷ lệ poster phim 2:3 (dọc) */
+    padding-top: 150%; 
+    position: relative;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+}
+
+.moviePoster {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; 
+    transition: transform 0.3s ease;
+}
+
+.movieCard:hover .moviePoster {
+    /* Hiệu ứng zoom nhẹ khi hover */
+    transform: scale(1.03); 
+}
+
+.moviePosterPlaceholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1rem;
+    color: #888;
+    text-align: center;
+}
+
+/* Chi tiết Phim */
+.movieDetails {
+    padding: 10px 15px 15px;
+}
+
+.movieTitle {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #FFF;
+    margin: 0 0 5px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rating {
+    color: #ff9900; 
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    font-weight: 700;
+}
+
+.overview {
+    color: #B3B3B3;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trailerBtn {
+    /* Nút Play/Trailer nhỏ */
+    display: block;
+    width: 100%;
+    background-color: #444;
+    color: white;
+    padding: 8px 0;
+    border-radius: 3px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    transition: background-color 0.3s;
+}
+
+.trailerBtn:hover {
+    background-color: #666;
+    text-decoration: none;
+}
+
+.playOverlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 48px;
+    color: white;
+    text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.movieCard:hover .playOverlay {
+    opacity: 1;
+}
+
+/* -------------------- MOVIE PLAYER PAGE (YouTube Style) -------------------- */
+
+.moviePlayerContainer {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 16px;
+    position: relative;
+    background: #0f0f0f;
+}
+
+.backButton {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.backButton:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.playerSection {
+    display: block;
+    margin-bottom: 0;
+}
+
+.videoPlayer {
+    width: 100%;
+    max-width: 1280px;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 16/9;
+    margin: 0 auto 8px;
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.videoPlayer iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* Video Progress Indicator - YouTube Style */
+.progressIndicator {
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    padding: 4px 16px;
+    margin: 0 0 12px 0;
+    box-shadow: none;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.progressInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    color: #aaa;
+    font-size: 12px;
+    font-weight: 400;
+    padding: 0 2px;
+}
+
+.progressPercentage {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.progressBar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: visible;
+    position: relative;
+    cursor: pointer;
+    transition: height 0.1s ease;
+}
+
+.progressBar:hover {
+    height: 6px;
+}
+
+.progressFill {
+    height: 100%;
+    background: #ff0000;
+    border-radius: 2px;
+    transition: width 0.1s linear;
+    box-shadow: none;
+    position: relative;
+}
+
+.progressFill::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translate(50%, -50%);
+    width: 12px;
+    height: 12px;
+    background: #ff0000;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+
+.progressBar:hover .progressFill::after {
+    opacity: 1;
+}
+
+.noVideo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #aaa;
+    font-size: 1.5rem;
+}
+
+.noPoster {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #000;
+}
+
+.noVideoOverlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0,0,0,0.8);
+    color: white;
+    padding: 20px 40px;
+    border-radius: 8px;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+/* Debug panel overlay (non-intrusive) */
+.debugPanel {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    background: rgba(10,10,10,0.9);
+    color: #ddd;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    max-width: 520px;
+    z-index: 60;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+}
+.debugPanel pre { margin: 6px 0 0 0; color: #bbb; font-size: 11px; max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+.movieInfo {
+    max-width: 1280px;
+    padding: 0 16px;
+    background: transparent;
+    backdrop-filter: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    margin: 0 auto;
+}
+
+.movieInfoTitle {
+    font-size: 20px;
+    font-weight: 500;
+    color: #fff;
+    margin: 0 0 8px 0;
+    line-height: 1.4;
+}
+
+.movieMeta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.movieRating {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.movieVotes {
+    color: #aaa;
+    font-size: 14px;
+}
+
+.movieDescription {
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 16px 0;
+    max-width: 900px;
+}
+
+/* -------------------- SIMILAR MOVIES SECTION -------------------- */
+
+.similarMoviesSection {
+    margin-top: 48px;
+    padding: 0 16px;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.sectionTitle {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 20px;
+}
+
+.loadingMovies {
+    text-align: center;
+    color: #aaa;
+    padding: 40px;
+    font-size: 1.1rem;
+}
+
+.similarMoviesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.movieCardCompact {
+    background: #1f1f1f;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.movieCardCompact:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.6);
+}
+
+.movieCardCompact .moviePosterContainer {
+    width: 100%;
+    padding-top: 150%;
+    position: relative;
+    overflow: hidden;
+}
+
+.movieCardCompact .movieDetails {
+    padding: 12px;
+}
+
+.movieCardCompact .movieTitle {
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+
+.movieCardCompact .rating {
+    font-size: 0.85rem;
+}
+
+/* -------------------- RESPONSIVE -------------------- */
+
+@media (max-width: 1024px) {
+    .playerSection {
+        flex-direction: column;
+    }
+    
+    .movieInfo {
+        flex: 1;
+    }
+    
+    .movieRow {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    .similarMoviesGrid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+    }
+    
+    .movieInfoTitle {
+        font-size: 1.4rem;
+    }
+    
+    .movieRow {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .movieRow {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+}
+
+/* -------------------- LIKE/DISLIKE/REVIEW BUTTONS -------------------- */
+
+.interactionButtons {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+}
+
+.likeBtn, .dislikeBtn, .watchlistBtn, .reviewBtn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 18px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.likeBtn:hover {
+    background: rgba(46, 213, 115, 0.15);
+    transform: translateY(-1px);
+}
+
+.dislikeBtn:hover {
+    background: rgba(255, 82, 82, 0.15);
+    transform: translateY(-1px);
+}
+
+.watchlistBtn:hover {
+    background: rgba(255, 193, 7, 0.15);
+    transform: translateY(-1px);
+}
+
+.likeBtn.active {
+    background: rgba(46, 213, 115, 0.2);
+    color: #2ed573;
+    border: 2px solid #2ed573;
+}
+
+.dislikeBtn.active {
+    background: rgba(255, 82, 82, 0.2);
+    color: #ff5252;
+    border: 2px solid #ff5252;
+}
+
+.watchlistBtn.active {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+    border: 2px solid #ffc107;
+}
+
+.reviewBtn {
+    background-color: #0066cc;
+    color: white;
+}
+
+.reviewBtn:hover {
+    background-color: #0055aa;
+    transform: scale(1.05);
+}
+
+/* -------------------- MODAL STYLING -------------------- */
+
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(20, 20, 30, 0.85) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(8px);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.modalContent {
+    background: linear-gradient(135deg, #2a2a3a 0%, #1f1f2e 100%);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95), 0 0 40px rgba(0, 102, 204, 0.1);
+    max-width: 520px;
+    width: 90%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: slideUp 0.4s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Hide scrollbar but keep scrolling functionality */
+.modalContent::-webkit-scrollbar {
+    display: none;
+}
+
+.modalContent {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 28px 24px;
+    background: linear-gradient(90deg, rgba(0, 102, 204, 0.05) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.modalHeader h2 {
+    font-size: 1.6rem;
+    margin: 0;
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.closeBtn {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: #E5E5E5;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 6px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    border-radius: 8px;
+}
+
+.closeBtn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    transform: rotate(90deg);
+}
+
+.modalBody {
+    padding: 20px 28px;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch; /* ensure children (textarea) take full width */
+}
+
+/* Hide scrollbar in modalBody */
+.modalBody::-webkit-scrollbar {
+    display: none;
+}
+
+.modalBody {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.ratingGroup {
+    margin-bottom: 0;
+}
+
+.ratingGroup label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #fff;
+    font-size: 13px;
+}
+
+.ratingStars {
+    display: flex;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.star {
+    background: none;
+    border: none;
+    font-size: 36px;
+    cursor: pointer;
+    color: #606060 !important; /* default: dark gray for unselected stars */
+    transition: color 0.18s ease, transform 0.18s ease, filter 0.18s ease;
+    padding: 4px;
+    line-height: 1;
+    filter: drop-shadow(0 0 0px transparent);
+}
+
+.star:hover {
+    transform: scale(1.35) rotate(-15deg);
+    color: #ffd700 !important; /* hover color (bright gold) */
+    filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.8));
+}
+
+.starActive {
+    color: #ff9500 !important; /* selected stars: orange-gold */
+    filter: drop-shadow(0 0 12px rgba(255, 149, 0, 0.8)) !important;
+    transform: scale(1.15);
+    animation: starPulse 0.3s ease;
+}
+
+@keyframes starPulse {
+    0%, 100% { transform: scale(1.15); }
+    50% { transform: scale(1.3); }
+}
+
+/* Apply rules explicitly for inline/rating groups to avoid overrides */
+.ratingInline .star, .ratingStars .star {
+    color: #606060 !important;
+}
+.ratingInline .star.starActive, .ratingStars .star.starActive {
+    color: #ff9500 !important;
+}
+
+.ratingInline .star:hover, .ratingStars .star:hover {
+    color: #ffd700 !important;
+}
+
+/* Inline rating used next to like/dislike buttons */
+.ratingInline {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 18px;
+}
+.ratingInline .star {
+    font-size: 28px;
+    padding: 2px;
+}
+
+.reviewGroup {
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.reviewGroup label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #fff;
+    font-size: 13px;
+}
+
+.usernameInput {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background-color: #2a2a2a;
+    color: #E5E5E5;
+    font-family: 'Roboto', Arial, sans-serif;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.usernameInput:focus {
+    outline: none;
+    border-color: #0066cc;
+    box-shadow: 0 0 8px rgba(0, 102, 204, 0.3);
+}
+
+.reviewInput {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #E5E5E5;
+    font-family: 'Roboto', Arial, sans-serif;
+    font-size: 13px;
+    resize: none;
+    transition: all 0.3s;
+    backdrop-filter: blur(4px);
+    max-height: 140px;
+    min-height: 100px;
+    line-height: 1.4;
+}
+
+/* -------------------- COMMENTS UI -------------------- */
+.commentsSection {
+    margin-top: 20px;
+    padding: 0 16px;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.commentForm {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.commentForm textarea {
+    flex: 1;
+    min-height: 64px;
+    max-height: 160px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.03);
+    color: #eee;
+    resize: vertical;
+}
+
+.submitBtn {
+    background: linear-gradient(180deg,#1e90ff,#0077e6);
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0,119,230,0.18);
+}
+
+.submitBtn:hover { transform: translateY(-2px); }
+
+.commentList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.commentItem {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.03);
+}
+
+.commentMeta {
+    font-size: 0.9rem;
+    color: #dcdcdc;
+    margin-bottom: 6px;
+}
+
+.commentTime { color: #9aa0a6; font-size: 0.8rem; margin-left: 8px; }
+
+.commentText {
+    color: #e9e9e9;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.commentToggle { margin-top: 6px; }
+.smallBtn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #cfe9ff;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.smallBtn:hover { background: rgba(255,255,255,0.03); }
+
+/* comment count on movie cards (HomePage) */
+.comments { margin-left: 12px; color: #9fd3ff; font-weight: 600; }
+
+.reviewInput:focus {
+    outline: none;
+    border-color: #0066cc;
+    background-color: rgba(0, 102, 204, 0.08);
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.15), inset 0 0 20px rgba(0, 102, 204, 0.05);
+}
+
+.modalFooter {
+    display: flex;
+    gap: 12px;
+    padding: 24px;
+    background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.2) 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    justify-content: flex-end;
+}
+
+.cancelBtn, .submitBtn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cancelBtn {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+    color: #E5E5E5;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    min-width: 90px;
+}
+
+.cancelBtn:hover {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.1));
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
+}
+
+.submitBtn {
+    background: linear-gradient(135deg, #0066cc 0%, #0055aa 100%);
+    color: white;
+    min-width: 120px;
+    box-shadow: 0 4px 15px rgba(0, 102, 204, 0.4);
+}
+
+.submitBtn:hover {
+    background: linear-gradient(135deg, #0077ff 0%, #0066cc 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(0, 102, 204, 0.6);
+}
+
+.submitBtn:active {
+    transform: translateY(0);
+}
