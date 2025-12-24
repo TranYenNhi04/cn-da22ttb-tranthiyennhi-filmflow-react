@@ -53,9 +53,30 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                     });
                     setWatchlist(watchlistMap);
                 }
+                
+                // Load likes/dislikes from cache on mount
+                const likesCacheKey = `likes_cache_${user.userId}`;
+                const likesCache = localStorage.getItem(likesCacheKey);
+                if (likesCache) {
+                    const likesMap = JSON.parse(likesCache);
+                    const newLikes = {};
+                    const newDislikes = {};
+                    Object.keys(likesMap).forEach(movieId => {
+                        const action = likesMap[movieId];
+                        if (action === 'like') {
+                            newLikes[movieId] = true;
+                            newDislikes[movieId] = false;
+                        } else if (action === 'dislike') {
+                            newDislikes[movieId] = true;
+                            newLikes[movieId] = false;
+                        }
+                    });
+                    setLikes(newLikes);
+                    setDislikes(newDislikes);
+                }
             }
         } catch (e) {
-            console.warn('Failed to load watchlist:', e);
+            console.warn('Failed to load user state:', e);
         }
     }, []);
 
@@ -351,10 +372,38 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                 await fetch(`${API_BASE}/movies/${currentMovie.id}/like`, { method: 'POST' });
             }
             const movieId = currentMovie.id;
-            setLikes(prev => ({ ...prev, [movieId]: !prev[movieId] }));
+            const isCurrentlyLiked = likes[movieId];
+            
+            setLikes(prev => ({ ...prev, [movieId]: !isCurrentlyLiked }));
             // If clicking like, remove dislike
-            if (!likes[movieId]) {
+            if (!isCurrentlyLiked) {
                 setDislikes(prev => ({ ...prev, [movieId]: false }));
+                
+                // Save to cache
+                if (user && user.userId) {
+                    try {
+                        const cacheKey = `likes_cache_${user.userId}`;
+                        const raw = localStorage.getItem(cacheKey);
+                        const map = raw ? JSON.parse(raw) : {};
+                        map[movieId] = 'like';
+                        localStorage.setItem(cacheKey, JSON.stringify(map));
+                    } catch (e) {
+                        console.warn('Failed to save like cache:', e);
+                    }
+                }
+            } else {
+                // Remove from cache if toggling off
+                if (user && user.userId) {
+                    try {
+                        const cacheKey = `likes_cache_${user.userId}`;
+                        const raw = localStorage.getItem(cacheKey);
+                        const map = raw ? JSON.parse(raw) : {};
+                        delete map[movieId];
+                        localStorage.setItem(cacheKey, JSON.stringify(map));
+                    } catch (e) {
+                        console.warn('Failed to update like cache:', e);
+                    }
+                }
             }
         } catch (err) {
             console.error('Failed to like movie:', err);
@@ -376,10 +425,38 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                 await fetch(`${API_BASE}/movies/${currentMovie.id}/dislike`, { method: 'POST' });
             }
             const movieId = currentMovie.id;
-            setDislikes(prev => ({ ...prev, [movieId]: !prev[movieId] }));
+            const isCurrentlyDisliked = dislikes[movieId];
+            
+            setDislikes(prev => ({ ...prev, [movieId]: !isCurrentlyDisliked }));
             // If clicking dislike, remove like
-            if (!dislikes[movieId]) {
+            if (!isCurrentlyDisliked) {
                 setLikes(prev => ({ ...prev, [movieId]: false }));
+                
+                // Save to cache
+                if (user && user.userId) {
+                    try {
+                        const cacheKey = `likes_cache_${user.userId}`;
+                        const raw = localStorage.getItem(cacheKey);
+                        const map = raw ? JSON.parse(raw) : {};
+                        map[movieId] = 'dislike';
+                        localStorage.setItem(cacheKey, JSON.stringify(map));
+                    } catch (e) {
+                        console.warn('Failed to save dislike cache:', e);
+                    }
+                }
+            } else {
+                // Remove from cache if toggling off
+                if (user && user.userId) {
+                    try {
+                        const cacheKey = `likes_cache_${user.userId}`;
+                        const raw = localStorage.getItem(cacheKey);
+                        const map = raw ? JSON.parse(raw) : {};
+                        delete map[movieId];
+                        localStorage.setItem(cacheKey, JSON.stringify(map));
+                    } catch (e) {
+                        console.warn('Failed to update dislike cache:', e);
+                    }
+                }
             }
         } catch (err) {
             console.error('Failed to dislike movie:', err);

@@ -127,13 +127,6 @@ export default function App() {
             <span className="nav-text">Trang chủ</span>
           </button>
           <button 
-            className={`nav-link ${currentPage === 'recommendations' ? 'active' : ''}`}
-            onClick={() => navigateTo('recommendations')}
-            onMouseEnter={prefetchRecommendations}
-          >
-            <span className="nav-text">Gợi ý</span>
-          </button>
-          <button 
             className={`nav-link ${currentPage === 'collections' ? 'active' : ''}`}
             onClick={() => navigateTo('collections')}
             onMouseEnter={prefetchCollections}

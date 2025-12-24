@@ -364,7 +364,7 @@ export default function ProfilePage() {
           <div className="activity-section">
             <h2>📺 Lịch Sử Xem ({watchHistory.length})</h2>
             <div className="movies-grid">
-              {watchHistory.slice(0, showAllHistory ? watchHistory.length : 3).map((entry) => {
+              {watchHistory.slice(0, showAllHistory ? watchHistory.length : 5).map((entry) => {
                 const movie = movieData[entry.movieId];
                 if (!movie) return null;
                 return (
@@ -387,13 +387,13 @@ export default function ProfilePage() {
                 );
               })}
             </div>
-            {watchHistory.length > 3 && (
+            {watchHistory.length > 5 && (
               <div className="show-more-container">
                 <button 
                   className="show-more-btn"
                   onClick={() => setShowAllHistory(!showAllHistory)}
                 >
-                  {showAllHistory ? '▲ Thu gọn' : `▼ Xem thêm (${watchHistory.length - 3} phim)`}
+                  {showAllHistory ? '▲ Thu gọn' : `▼ Xem thêm (${watchHistory.length - 5} phim)`}
                 </button>
               </div>
             )}
@@ -405,7 +405,7 @@ export default function ProfilePage() {
           <div className="activity-section">
             <h2>❤️ Danh Sách Đã Lưu ({watchlist.length})</h2>
             <div className="movies-grid">
-              {watchlist.slice(0, showAllWatchlist ? watchlist.length : 3).map((movie) => (
+              {watchlist.slice(0, showAllWatchlist ? watchlist.length : 5).map((movie) => (
                 <div key={movie.id} className="movie-poster-card">
                   <div className="movie-poster-wrapper">
                     {movie.poster_url ? (
@@ -427,13 +427,13 @@ export default function ProfilePage() {
                 </div>
               ))}
             </div>
-            {watchlist.length > 3 && (
+            {watchlist.length > 5 && (
               <div className="show-more-container">
                 <button 
                   className="show-more-btn"
                   onClick={() => setShowAllWatchlist(!showAllWatchlist)}
                 >
-                  {showAllWatchlist ? '▲ Thu gọn' : `▼ Xem thêm (${watchlist.length - 3} phim)`}
+                  {showAllWatchlist ? '▲ Thu gọn' : `▼ Xem thêm (${watchlist.length - 5} phim)`}
                 </button>
               </div>
             )}

@@ -119,6 +119,20 @@ def init_db(data_dir=None):
         """
     )
 
+    # Search history table - Track user searches for personalization
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT,
+            query TEXT,
+            results_count INTEGER,
+            clicked_movieId INTEGER,
+            timestamp TEXT
+        )
+        """
+    )
+
     conn.commit()
 
     # Create indexes to speed up interaction/rating lookups
@@ -128,6 +142,7 @@ def init_db(data_dir=None):
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(userId)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(userId)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(userId)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history(userId)")
         conn.commit()
     except Exception:
         # non-fatal
@@ -619,6 +634,67 @@ def get_user_metadata(user_id, data_dir=None):
             except:
                 return {}
         return {}
+    finally:
+        conn.close()
+
+
+# ==================== SEARCH HISTORY FUNCTIONS ====================
+
+def insert_search_history(user_id, query, results_count=0, clicked_movie_id=None, data_dir=None):
+    """Lưu lịch sử tìm kiếm của user."""
+    conn = get_connection(data_dir)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO search_history (userId, query, results_count, clicked_movieId, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (user_id, query, results_count, clicked_movie_id, datetime.datetime.now().isoformat())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error inserting search history: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def fetch_search_history(user_id, limit=50, data_dir=None):
+    """Lấy lịch sử tìm kiếm của user, mới nhất trước."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT query, results_count, clicked_movieId, timestamp FROM search_history WHERE userId=? ORDER BY timestamp DESC LIMIT ?",
+            (user_id, limit)
+        )
+        rows = cur.fetchall()
+        return [{
+            "query": r[0],
+            "results_count": r[1],
+            "clicked_movieId": r[2],
+            "timestamp": r[3]
+        } for r in rows]
+    finally:
+        conn.close()
+
+
+def get_popular_searches(limit=10, days=7, data_dir=None):
+    """Lấy từ khóa tìm kiếm phổ biến trong N ngày gần đây."""
+    conn = get_connection(data_dir)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT query, COUNT(*) as search_count 
+            FROM search_history 
+            WHERE datetime(timestamp) > datetime('now', ? || ' days')
+            GROUP BY LOWER(query)
+            ORDER BY search_count DESC 
+            LIMIT ?
+        """, (f'-{days}', limit))
+        rows = cur.fetchall()
+        return [{"query": r[0], "count": r[1]} for r in rows]
+    except Exception:
+        return []
     finally:
         conn.close()
 

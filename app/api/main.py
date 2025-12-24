@@ -85,7 +85,7 @@ def health():
 @app.get("/movies/search")
 def search_movies(q: str, year_min: Optional[int] = None, year_max: Optional[int] = None, 
                   rating_min: Optional[float] = None, rating_max: Optional[float] = None,
-                  genre: Optional[str] = None, limit: int = 20):
+                  genre: Optional[str] = None, limit: int = 20, user_id: Optional[str] = None):
     """Advanced search with filters: year range, rating range, genre"""
     try:
         results = movie_controller.search_movies(q)
@@ -104,6 +104,17 @@ def search_movies(q: str, year_min: Optional[int] = None, year_max: Optional[int
             results = [m for m in results if genre_lower in str(m.get('genres', '')).lower()]
         
         results = results[:limit]
+        
+        # Save search history if user_id is provided
+        if user_id and q:
+            try:
+                try:
+                    from app.data import database as _db
+                except Exception:
+                    from data import database as _db
+                _db.insert_search_history(user_id, q, len(results), data_dir=DATA_DIR)
+            except Exception as e:
+                print(f"Failed to save search history: {e}")
         
         for movie in results:
             title = movie.get("title", "")
@@ -310,6 +321,11 @@ def get_recommendations(
             data = recommendation_controller.get_content_based_recommendations(movie_id, n)
         elif rec_type == "hybrid":
             data = recommendation_controller.get_hybrid_recommendations(user_id, movie_id, n)
+        elif rec_type == "personalized":
+            # New: personalized recommendations based on user behavior and context
+            if not user_id:
+                raise HTTPException(status_code=400, detail="user_id required for personalized recommendations")
+            data = recommendation_controller.get_personalized_recommendations(user_id, n)
         else:
             raise HTTPException(status_code=400, detail="Unknown recommendation type")
         
@@ -909,3 +925,63 @@ def get_user_notifications(user_id: str):
         }
     except Exception as e:
         return {"user_id": user_id, "notifications": []}
+
+# ==================== SEARCH HISTORY ====================
+
+@app.get("/search-history/{user_id}")
+def get_search_history(user_id: str, limit: int = 50):
+    """Lấy lịch sử tìm kiếm của user."""
+    try:
+        try:
+            from app.data import database as _db
+        except Exception:
+            from data import database as _db
+        
+        history = _db.fetch_search_history(user_id, limit=limit, data_dir=DATA_DIR)
+        return {"user_id": user_id, "history": history}
+    except Exception as e:
+        return {"user_id": user_id, "history": []}
+
+
+@app.get("/search/popular")
+def get_popular_searches(days: int = 7, limit: int = 10):
+    """Lấy từ khóa tìm kiếm phổ biến."""
+    try:
+        try:
+            from app.data import database as _db
+        except Exception:
+            from data import database as _db
+        
+        popular = _db.get_popular_searches(limit=limit, days=days, data_dir=DATA_DIR)
+        return {"popular_searches": popular}
+    except Exception as e:
+        return {"popular_searches": []}
+
+
+# ==================== USER BEHAVIOR ANALYSIS ====================
+
+@app.get("/user/{user_id}/behavior")
+def get_user_behavior_analysis(user_id: str):
+    """Phân tích hành vi người dùng: thể loại yêu thích, thời gian xem, xu hướng."""
+    try:
+        behavior = recommendation_controller.analyze_user_behavior(user_id)
+        return {
+            "user_id": user_id,
+            "behavior": behavior
+        }
+    except Exception as e:
+        return {
+            "user_id": user_id,
+            "behavior": {},
+            "error": str(e)
+        }
+
+
+@app.post("/models/refresh")
+def refresh_recommendation_models():
+    """Cập nhật models với dữ liệu mới (để học liên tục)."""
+    try:
+        success = recommendation_controller.refresh_models()
+        return {"status": "ok" if success else "failed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

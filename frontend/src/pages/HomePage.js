@@ -92,7 +92,12 @@ export default function HomePage({ onMovieClick }) {
       searchTimeoutRef.current = setTimeout(async () => {
         setIsSearching(true);
         try {
-          const response = await fetch(`${API_BASE}/movies/autocomplete?q=${encodeURIComponent(query)}&n=20`);
+          // Save search to history
+          const storedUser = localStorage.getItem('user');
+          const userId = storedUser ? JSON.parse(storedUser)?.userId : null;
+          const userParam = userId ? `&user_id=${encodeURIComponent(userId)}` : '';
+          
+          const response = await fetch(`${API_BASE}/movies/autocomplete?q=${encodeURIComponent(query)}&n=20${userParam}`);
           if (response.ok) {
             const data = await response.json();
             const results = data.results || [];
@@ -156,23 +161,42 @@ export default function HomePage({ onMovieClick }) {
       filtered = filtered.filter(m => {
         try {
           let genres = m.genres;
+          
+          // Handle string format
           if (typeof genres === 'string') {
-            genres = JSON.parse(genres);
+            try {
+              genres = JSON.parse(genres);
+            } catch (e) {
+              // If JSON parse fails, treat as comma-separated string
+              genres = genres.split(',').map(g => g.trim());
+            }
           }
+          
+          // Handle array format
           if (Array.isArray(genres)) {
             const genreNames = genres.map(g => {
               if (typeof g === 'string') return g.toLowerCase();
-              if (g.name) return g.name.toLowerCase();
+              if (g && g.name) return g.name.toLowerCase();
               return '';
-            });
+            }).filter(Boolean);
+            
             // Check if any genre name matches any target genre
-            return genreNames.some(gn => 
+            const match = genreNames.some(gn => 
               targetGenres.some(tg => gn.includes(tg) || tg.includes(gn))
             );
+            
+            return match;
           }
+          
+          // Handle object with name property
+          if (genres && genres.name) {
+            const gn = genres.name.toLowerCase();
+            return targetGenres.some(tg => gn.includes(tg) || tg.includes(gn));
+          }
+          
           return false;
         } catch (e) {
-          console.warn('Genre parse error:', e);
+          console.warn('Genre parse error for movie:', m.title, e);
           return false;
         }
       });
@@ -180,24 +204,33 @@ export default function HomePage({ onMovieClick }) {
     
     // Year filter
     if (yearFilter !== 'all') {
-      if (yearFilter === '2024') {
-        filtered = filtered.filter(m => m.year >= 2024);
-      } else if (yearFilter === '2023') {
-        filtered = filtered.filter(m => m.year === 2023);
-      } else if (yearFilter === '2020-2022') {
-        filtered = filtered.filter(m => m.year >= 2020 && m.year <= 2022);
-      } else if (yearFilter === 'older') {
-        filtered = filtered.filter(m => m.year < 2020);
-      }
+      filtered = filtered.filter(m => {
+        const year = parseInt(m.year) || parseInt(m.release_date?.substring(0, 4)) || 0;
+        
+        if (yearFilter === '2024') {
+          return year >= 2024;
+        } else if (yearFilter === '2023') {
+          return year === 2023;
+        } else if (yearFilter === '2020-2022') {
+          return year >= 2020 && year <= 2022;
+        } else if (yearFilter === 'older') {
+          return year > 0 && year < 2020;
+        }
+        return true;
+      });
     }
     
     // Sorting
     if (sortBy === 'rating') {
-      filtered.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+      filtered.sort((a, b) => (parseFloat(b.vote_average) || 0) - (parseFloat(a.vote_average) || 0));
     } else if (sortBy === 'newest') {
-      filtered.sort((a, b) => (b.year || 0) - (a.year || 0));
+      filtered.sort((a, b) => {
+        const yearA = parseInt(a.year) || parseInt(a.release_date?.substring(0, 4)) || 0;
+        const yearB = parseInt(b.year) || parseInt(b.release_date?.substring(0, 4)) || 0;
+        return yearB - yearA;
+      });
     } else if (sortBy === 'title') {
-      filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      filtered.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'vi'));
     }
     
     return filtered;
@@ -419,8 +452,8 @@ export default function HomePage({ onMovieClick }) {
         <div className="hero-background">
           <div className="hero-posters-grid">
             {heroMovies.length > 0 ? (
-              heroMovies.map((movie, idx) => (
-                <div key={idx} className="hero-poster-item" style={{ animationDelay: `${idx * 0.1}s` }}>
+              [...heroMovies, ...heroMovies, ...heroMovies].slice(0, 80).map((movie, idx) => (
+                <div key={idx} className="hero-poster-item" style={{ animationDelay: `${idx * 0.04}s` }}>
                   <img 
                     src={movie.poster_url || movie.poster_path || `https://picsum.photos/seed/${movie.id}/300/450`} 
                     alt={movie.title}
@@ -430,22 +463,43 @@ export default function HomePage({ onMovieClick }) {
               ))
             ) : (
               // Placeholder gradient boxes while loading
-              Array.from({ length: 20 }).map((_, idx) => (
-                <div key={idx} className="hero-poster-item placeholder" style={{ animationDelay: `${idx * 0.1}s` }} />
+              Array.from({ length: 80 }).map((_, idx) => (
+                <div key={idx} className="hero-poster-item placeholder" style={{ animationDelay: `${idx * 0.04}s` }} />
               ))
             )}
+          </div>
+          <div className="hero-particles">
+            {Array.from({ length: 30 }).map((_, i) => (
+              <div key={i} className="particle" style={{ 
+                left: `${Math.random() * 100}%`, 
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 5}s`,
+                animationDuration: `${3 + Math.random() * 4}s`
+              }} />
+            ))}
           </div>
           <div className="hero-gradient-overlay" />
         </div>
         
         {/* Hero Content */}
         <div className="hero-overlay">
+          <div className="hero-glow-effect" />
           <h1 className="hero-title">
-            <span className="hero-title-main">Khám phá thế giới điện ảnh</span>
-            <span className="hero-title-sub">Không giới hạn</span>
+            <span className="hero-title-main">
+              <span className="text-gradient">Khám phá thế giới điện ảnh</span>
+            </span>
+            <span className="hero-title-sub">
+              <span className="text-shine">Không giới hạn</span>
+            </span>
           </h1>
-          <p className="hero-subtitle">Hàng nghìn bộ phim, series hot đang chờ bạn</p>
-          <p className="hero-description">Chất lượng HD/4K cao cấp • Cập nhật liên tục mỗi ngày • Xem mọi lúc mọi nơi</p>
+          <p className="hero-subtitle">
+            Hàng nghìn bộ phim, series hot đang chờ bạn
+          </p>
+          <p className="hero-description">
+            <span className="feature-badge">Chất lượng HD/4K cao cấp</span>
+            <span className="feature-badge">Cập nhật liên tục mỗi ngày</span>
+            <span className="feature-badge">Xem mọi lúc mọi nơi</span>
+          </p>
           <div className="search-container">
             <input
               type="text"

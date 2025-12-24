@@ -34,13 +34,12 @@ function MovieCard({ movie, onClick }) {
 
 export default function CollectionsPage({ onMovieClick }) {
   const [collections] = useState([
-    { id: 'best_2024', name: '🏆 Best of 2024', icon: '🏆' },
-    { id: 'horror', name: '👻 Horror Collection', icon: '👻' },
-    { id: 'action', name: '💥 Action Movies', icon: '💥' },
-    { id: 'top_rated', name: '⭐ Top Rated', icon: '⭐' }
+    { id: 'horror', name: 'Horror Collection' },
+    { id: 'action', name: 'Action Movies' },
+    { id: 'top_rated', name: 'Top Rated' }
   ]);
 
-  const [selectedCollection, setSelectedCollection] = useState('best_2024');
+  const [selectedCollection, setSelectedCollection] = useState('horror');
   const [collectionMovies, setCollectionMovies] = useState([]);
   const [collectionInfo, setCollectionInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -107,8 +106,7 @@ export default function CollectionsPage({ onMovieClick }) {
               className={`collection-tab ${selectedCollection === col.id ? 'active' : ''}`}
               onClick={() => setSelectedCollection(col.id)}
             >
-              <span className="tab-icon">{col.icon}</span>
-              <span className="tab-name">{col.name}</span>
+              {col.name}
             </button>
           ))}
         </div>
