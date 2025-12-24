@@ -6,3 +6,7 @@ numpy
 google-api-python-client
 python-dotenv
 requests
+sqlalchemy
+psycopg2-binary
+alembic
+pydantic[email]

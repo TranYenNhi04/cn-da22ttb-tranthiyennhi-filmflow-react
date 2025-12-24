@@ -1,5 +1,22 @@
 version: "3.9"
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: movie-postgres
+    environment:
+      POSTGRES_DB: filmflow
+      POSTGRES_USER: filmflow_user
+      POSTGRES_PASSWORD: filmflow_pass123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U filmflow_user -d filmflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./app
     container_name: movie-backend
@@ -9,9 +26,13 @@ services:
       - PYTHONUNBUFFERED=1
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - TMDB_API_KEY=${TMDB_API_KEY}
+      - DATABASE_URL=postgresql://filmflow_user:filmflow_pass123@postgres:5432/filmflow
     volumes:
       - ./app/data:/app/data
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -26,3 +47,6 @@ services:
       - "3000:80"
     depends_on:
       - backend
+
+volumes:
+  postgres_data:
