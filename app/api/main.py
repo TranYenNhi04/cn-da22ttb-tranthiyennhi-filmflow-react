@@ -1,18 +1,46 @@
 # app/api/main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+from sqlalchemy.orm import Session
 import os
 import re
+from functools import lru_cache
+from datetime import datetime, timedelta
+import asyncio
+import concurrent.futures
+import time
 
 # Controllers
-from controllers.movie_controller import MovieController
-from controllers.recommendation_controller import RecommendationController
+from app.controllers.movie_controller import MovieController
+from app.controllers.recommendation_controller import RecommendationController
+
+# Middleware
+from app.api.middleware import RateLimitMiddleware
+
+# Database
+try:
+    from app.data.db_postgresql import (
+        get_db, 
+        get_or_create_user,
+        get_user_ratings,
+        get_user_watchlist,
+        get_watch_history,
+        add_to_watchlist,
+        remove_from_watchlist,
+        add_watch_history
+    )
+    from app.data.models import User, Movie, Rating, Review, WatchHistory, Watchlist
+    USE_POSTGRESQL = True
+    print("✅ Using PostgreSQL for user data")
+except Exception as e:
+    print(f"⚠️ PostgreSQL not available: {e}")
+    USE_POSTGRESQL = False
 
 # Utils
 try:
-    from utils.tmdb_api import get_movie_poster, get_movie_data
+    from app.utils.tmdb_api import get_movie_poster, get_movie_data
     TMDB_AVAILABLE = True
 except:
     TMDB_AVAILABLE = False
@@ -20,7 +48,7 @@ except:
     get_movie_data = None
 
 try:
-    from utils.youtube_api import get_youtube_video
+    from app.utils.youtube_api import get_youtube_video
     YOUTUBE_AVAILABLE = True
 except:
     YOUTUBE_AVAILABLE = False
@@ -29,19 +57,113 @@ except:
 # FastAPI
 app = FastAPI(title="Movie Recommendation API")
 
+# Configure CORS with environment variables
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:80').split(',')
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Add rate limiting
+app.add_middleware(RateLimitMiddleware)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 
 movie_controller = MovieController(data_dir=DATA_DIR)
 recommendation_controller = RecommendationController(data_dir=DATA_DIR)
+
+# In-memory cache for recommendations (expires after 5 minutes)
+recommendation_cache = {}
+CACHE_DURATION = 300  # 5 minutes in seconds
+
+# Pre-computed popular movies cache (updated every 10 minutes)
+popular_movies_cache = {"data": [], "timestamp": 0}
+POPULAR_CACHE_DURATION = 600  # 10 minutes
+
+# Helper functions for optimization
+def get_popular_movies_fast(user_id=None, n=10):
+    """Get popular movies with caching to avoid repeated dataframe operations"""
+    global popular_movies_cache
+    current_time = time.time()
+    
+    # Check if popular movies cache is valid
+    if (popular_movies_cache["data"] and 
+        current_time - popular_movies_cache["timestamp"] < POPULAR_CACHE_DURATION):
+        movies = popular_movies_cache["data"]
+    else:
+        # Refresh popular movies cache
+        popular_df = movie_controller.movie_model.movies_df.sort_values(
+            'vote_average', ascending=False
+        ).head(100)  # Cache top 100
+        popular_movies_cache["data"] = popular_df.to_dict('records')
+        popular_movies_cache["timestamp"] = current_time
+        movies = popular_movies_cache["data"]
+    
+    # Shuffle based on user_id for personalization
+    if user_id and movies:
+        import random
+        seed = abs(hash(user_id)) % 100000
+        random.seed(seed)
+        shuffled = movies.copy()
+        random.shuffle(shuffled)
+        return shuffled[:n]
+    
+    return movies[:n]
+
+def enrich_movies_parallel(movies):
+    """Enrich movies with posters using parallel processing for speed"""
+    if not movies:
+        return []
+    
+    def enrich_movie(movie):
+        """Enrich a single movie with poster and placeholder"""
+        # Priority 1: Use existing poster_url from movie data
+        if movie.get("poster_url"):
+            return movie
+        
+        # Priority 2: Build TMDB poster URL from movie ID (faster than API call)
+        movie_id = movie.get('id') or movie.get('movieId')
+        if movie_id:
+            # Try to get poster_path from TMDB using movie ID
+            # This would require a TMDB lookup, but we can construct a likely URL
+            # For Harry Potter movies, use proper TMDB poster paths
+            movie_id = int(movie_id) if isinstance(movie_id, (str, int)) else None
+            if movie_id:
+                # Common TMDB poster pattern - we'd need to fetch this properly
+                # For now, try to use title-based lookup if TMDB is available
+                title = movie.get('title', '')
+                year = movie.get('year')
+                
+                if TMDB_AVAILABLE and title:
+                    try:
+                        tmdb_data = get_movie_data(title, year)
+                        if tmdb_data and tmdb_data.get('poster_url'):
+                            movie['poster_url'] = tmdb_data['poster_url']
+                            return movie
+                    except Exception:
+                        pass
+        
+        # Priority 3: Use generic placeholder as last resort
+        seed = movie.get('id') or movie.get('title', 'movie')
+        t = str(seed).lower().replace(' ', '')
+        movie["poster_url"] = f"https://picsum.photos/seed/{t[:20] or 'movie'}/300/450"
+        
+        # Lazy load video URL when needed (not on list view)
+        if not movie.get("video_url"):
+            movie["video_url"] = None
+        
+        return movie
+    
+    # Process in parallel using thread pool (fast for I/O-bound operations)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        enriched = list(executor.map(enrich_movie, movies))
+    
+    return enriched
 
 # Pydantic models for request bodies
 class ReviewRequest(BaseModel):
@@ -105,16 +227,7 @@ def search_movies(q: str, year_min: Optional[int] = None, year_max: Optional[int
         
         results = results[:limit]
         
-        # Save search history if user_id is provided
-        if user_id and q:
-            try:
-                try:
-                    from app.data import database as _db
-                except Exception:
-                    from data import database as _db
-                _db.insert_search_history(user_id, q, len(results), data_dir=DATA_DIR)
-            except Exception as e:
-                print(f"Failed to save search history: {e}")
+        # NOTE: Search history tracking disabled (requires migration to PostgreSQL)
         
         for movie in results:
             title = movie.get("title", "")
@@ -314,7 +427,25 @@ def get_movie_trailer(movie_id: int):
 def get_recommendations(
     rec_type: str, user_id: Optional[str] = None, movie_id: Optional[int] = None, n: int = 10
 ):
+    start_time = time.time()
+    
+    # Create cache key based on request parameters
+    cache_key = f"{rec_type}_{user_id or 'anon'}_{movie_id or 'none'}_{n}"
+    current_time = time.time()
+    
+    # Check cache first for instant response
+    if cache_key in recommendation_cache:
+        cached_entry = recommendation_cache[cache_key]
+        if current_time - cached_entry["timestamp"] < CACHE_DURATION:
+            print(f"⚡ Cache HIT for {cache_key} (age: {int(current_time - cached_entry['timestamp'])}s)")
+            return cached_entry["data"]
+        else:
+            # Cache expired, remove it
+            del recommendation_cache[cache_key]
+    
     try:
+        # Get recommendations from models
+        data = None
         if rec_type == "collaborative":
             data = recommendation_controller.get_collaborative_recommendations(user_id, n)
         elif rec_type == "content":
@@ -322,39 +453,39 @@ def get_recommendations(
         elif rec_type == "hybrid":
             data = recommendation_controller.get_hybrid_recommendations(user_id, movie_id, n)
         elif rec_type == "personalized":
-            # New: personalized recommendations based on user behavior and context
             if not user_id:
-                raise HTTPException(status_code=400, detail="user_id required for personalized recommendations")
-            data = recommendation_controller.get_personalized_recommendations(user_id, n)
+                data = recommendation_controller.get_collaborative_recommendations(None, n)
+            else:
+                try:
+                    data = recommendation_controller.get_personalized_recommendations(user_id, n)
+                    if not data or len(data) == 0:
+                        data = recommendation_controller.get_collaborative_recommendations(user_id, n)
+                except Exception as e:
+                    print(f"Personalized rec failed for {user_id}: {e}, falling back to collaborative")
+                    data = recommendation_controller.get_collaborative_recommendations(user_id, n)
         else:
             raise HTTPException(status_code=400, detail="Unknown recommendation type")
         
-        # Enrich each movie with video_url and poster_url (optimized)
-        enriched = []
-        for movie in data:
-            title = movie.get("title", "")
-            year = movie.get("year")
-            
-            # Chỉ lấy poster từ TMDB, bỏ qua video để nhanh hơn
-            if not movie.get("poster_url") and TMDB_AVAILABLE:
-                tmdb_poster = get_movie_poster(title)
-                if tmdb_poster:
-                    movie["poster_url"] = tmdb_poster
-            
-            # Thêm poster placeholder nếu chưa có
-            if not movie.get("poster_url"):
-                seed = movie.get('id') or title
-                t = str(seed).lower().replace(' ', '')
-                movie["poster_url"] = f"https://picsum.photos/seed/{t[:20] or 'movie'}/300/450"
-            
-            # Video URL sẽ load khi click vào phim (lazy loading)
-            if not movie.get("video_url"):
-                movie["video_url"] = None
-            
-            
-            enriched.append(movie)
+        # Fast fallback to cached popular movies if no results
+        if not data or len(data) == 0:
+            print(f"⚠️ No recommendations for {rec_type}/{user_id}, using popular movies")
+            data = get_popular_movies_fast(user_id, n)
         
-        return {"type": rec_type, "results": enriched}
+        # OPTIMIZED: Parallel poster enrichment
+        enriched = enrich_movies_parallel(data[:n])
+        
+        result = {"type": rec_type, "results": enriched}
+        
+        # Cache the result for 5 minutes
+        recommendation_cache[cache_key] = {
+            "data": result,
+            "timestamp": current_time
+        }
+        
+        elapsed = (time.time() - start_time) * 1000
+        print(f"✓ Recommendations generated in {elapsed:.0f}ms (type={rec_type}, count={len(enriched)})")
+        
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -398,17 +529,22 @@ def create_user(request: UserRequest):
 
 
 @app.post("/auth/login")
-def login(request: LoginRequest):
-    """Simple login: find user by email in metadata; password is ignored (mock)."""
+def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """Simple login: find user by email; password ignored (mock auth)"""
     try:
-        try:
-            from app.data import database as _db
-        except Exception:
-            from data import database as _db
-        user = _db.get_user_by_email(request.email, DATA_DIR)
+        from app.data.models import User as UserModel
+        user = db.query(UserModel).filter(UserModel.email == request.email).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"status": "ok", "user": user}
+        return {
+            "status": "ok",
+            "user": {
+                "id": user.user_id,
+                "email": user.email,
+                "metadata": f'{{"email":"{user.email}","name":"{user.name}"}}',
+                "created_at": user.created_at.isoformat() if user.created_at else None
+            }
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -457,9 +593,9 @@ def get_interactions(user_id: Optional[str] = None, movie_id: Optional[int] = No
     """
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
 
         results = _db.fetch_interactions(user_id=user_id, movie_id=movie_id, limit=limit, data_dir=DATA_DIR)
         return {"results": results}
@@ -520,18 +656,20 @@ def add_movie_comment(movie_id: int, request: CommentRequest):
 
 
 @app.get("/movies/{movie_id}/comments")
-def get_movie_comments(movie_id: int, limit: int = 50, offset: int = 0):
+def get_movie_comments(movie_id: int, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     try:
         comments = movie_controller.get_movie_comments(movie_id, limit=limit, offset=offset)
-        # enrich comments with display_name from users table
+        # Enrich comments with display_name from users table
         try:
-            try:
-                from app.data import database as _db
-            except Exception:
-                from data import database as _db
+            from app.data.models import User as UserModel
             enriched = []
             for c in comments:
-                display = _db.get_user_display_name(c.get('userId'), data_dir=DATA_DIR)
+                user_id = c.get('userId')
+                if user_id:
+                    user = db.query(UserModel).filter(UserModel.user_id == str(user_id)).first()
+                    display = user.name if user else f"User {user_id}"
+                else:
+                    display = "Anonymous"
                 enriched.append({**c, 'display_name': display})
             return {"movie_id": movie_id, "comments": enriched}
         except Exception:
@@ -541,26 +679,26 @@ def get_movie_comments(movie_id: int, limit: int = 50, offset: int = 0):
 
 
 @app.get("/movies/comments/counts")
-def get_comments_counts_get(movie_ids: str):
-    """Return comment counts for comma-separated movie_ids, e.g. movie_ids=1,2,3"""
+def get_comments_counts_get(movie_ids: str, db: Session = Depends(get_db)):
+    """Return comment counts for comma-separated movie_ids"""
     try:
         if not movie_ids:
             raise HTTPException(status_code=400, detail="movie_ids required")
-        ids = []
-        for part in movie_ids.split(','):
-            try:
-                ids.append(int(part.strip()))
-            except Exception:
-                continue
-        try:
-            try:
-                from app.data import database as _db
-            except Exception:
-                from data import database as _db
-            counts = _db.fetch_comment_counts(ids, data_dir=DATA_DIR)
-            return {"counts": counts}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        ids = [int(part.strip()) for part in movie_ids.split(',') if part.strip().isdigit()]
+        
+        from app.data.models import Review
+        from sqlalchemy import func
+        
+        # Count reviews per movie
+        counts_query = db.query(
+            Review.movie_id,
+            func.count(Review.id).label('count')
+        ).filter(
+            Review.movie_id.in_([str(mid) for mid in ids])
+        ).group_by(Review.movie_id).all()
+        
+        counts = {int(movie_id): count for movie_id, count in counts_query}
+        return {"counts": counts}
     except HTTPException:
         raise
     except Exception as e:
@@ -568,21 +706,26 @@ def get_comments_counts_get(movie_ids: str):
 
 
 @app.post("/movies/comments/counts")
-def get_comments_counts_post(body: dict):
-    """Return comment counts for list of movie_ids via POST. Expects {"movie_ids": [1,2,3]}"""
+def get_comments_counts_post(body: dict, db: Session = Depends(get_db)):
+    """Return comment counts for list of movie_ids via POST"""
     try:
         ids = body.get("movie_ids", [])
         if not ids:
             raise HTTPException(status_code=400, detail="movie_ids required")
-        try:
-            try:
-                from app.data import database as _db
-            except Exception:
-                from data import database as _db
-            counts = _db.fetch_comment_counts(ids, data_dir=DATA_DIR)
-            return {"counts": counts}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        
+        from app.data.models import Review
+        from sqlalchemy import func
+        
+        # Count reviews per movie
+        counts_query = db.query(
+            Review.movie_id,
+            func.count(Review.id).label('count')
+        ).filter(
+            Review.movie_id.in_([str(mid) for mid in ids])
+        ).group_by(Review.movie_id).all()
+        
+        counts = {int(movie_id): count for movie_id, count in counts_query}
+        return {"counts": counts}
     except HTTPException:
         raise
     except Exception as e:
@@ -590,6 +733,7 @@ def get_comments_counts_post(body: dict):
 
 
 # ==================== WATCHLIST & FAVORITES ====================
+# DEPRECATED: Use PostgreSQL endpoints below (user/{user_id}/watchlist/toggle)
 
 class WatchlistRequest(BaseModel):
     movie_id: int
@@ -598,36 +742,31 @@ class WatchlistRequest(BaseModel):
 
 
 @app.post("/watchlist")
-def manage_watchlist(request: WatchlistRequest):
-    """Thêm/xóa phim từ watchlist."""
+def manage_watchlist(request: WatchlistRequest, db: Session = Depends(get_db)):
+    """DEPRECATED: Use /user/{user_id}/watchlist/toggle instead"""
     try:
-        try:
-            from app.data import database as _db
-        except Exception:
-            from data import database as _db
+        from app.data.db_postgresql import add_to_watchlist, remove_from_watchlist, get_or_create_user
         
         user_id = (request.user_id or "Anonymous").strip() or "Anonymous"
-        movie_id = request.movie_id
+        movie_id = str(request.movie_id)
         action = request.action.lower()
         
+        # Auto-create user if doesn't exist
+        get_or_create_user(db, user_id=user_id)
+        
         if action == "add":
-            # Add to actual watchlist table
-            _db.add_to_watchlist(user_id, movie_id, data_dir=DATA_DIR)
-            # Also track interaction
-            movie_controller.add_interaction(movie_id, user_id, "watchlist_add")
-            return {"status": "added", "movie_id": movie_id, "user_id": user_id}
+            add_to_watchlist(db, user_id, movie_id)
+            movie_controller.add_interaction(request.movie_id, user_id, "watchlist_add")
+            return {"status": "added", "movie_id": request.movie_id, "user_id": user_id}
         elif action == "remove":
-            # Remove from watchlist table
-            _db.remove_from_watchlist(user_id, movie_id, data_dir=DATA_DIR)
-            # Also track interaction
-            movie_controller.add_interaction(movie_id, user_id, "watchlist_remove")
-            return {"status": "removed", "movie_id": movie_id, "user_id": user_id}
+            remove_from_watchlist(db, user_id, movie_id)
+            movie_controller.add_interaction(request.movie_id, user_id, "watchlist_remove")
+            return {"status": "removed", "movie_id": request.movie_id, "user_id": user_id}
         else:
             raise HTTPException(status_code=400, detail="Invalid action")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error managing watchlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -636,9 +775,9 @@ def get_user_profile(user_id: str):
     """Lấy thông tin profile user: watchlist, history, stats."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         watchlist = _db.get_user_watchlist(user_id, data_dir=DATA_DIR)
         history = _db.fetch_watch_history(user_id, limit=100, data_dir=DATA_DIR)
@@ -665,9 +804,9 @@ def update_user_preferences(user_id: str, request: dict):
     """Lưu user preferences: favorite genres, quality, language."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         import json
         prefs = json.dumps(request)
@@ -683,9 +822,9 @@ def get_user_preferences(user_id: str):
     """Lấy user preferences."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         prefs = _db.get_user_metadata(user_id, data_dir=DATA_DIR)
         return {"user_id": user_id, "preferences": prefs}
@@ -703,18 +842,19 @@ class WatchHistoryRequest(BaseModel):
 
 
 @app.post("/watch-history")
-def add_watch_history(request: WatchHistoryRequest):
+async def add_watch_history_new(request: WatchHistoryRequest, db: Session = Depends(get_db)):
     """Ghi lại lịch sử xem phim."""
     try:
         user_id = (request.user_id or "Anonymous").strip() or "Anonymous"
-        movie_id = request.movie_id
+        movie_id = str(request.movie_id)
         
-        try:
-            from app.data import database as _db
-        except Exception:
-            from data import database as _db
+        from app.data.db_postgresql import add_watch_history, get_or_create_user
         
-        _db.insert_watch_history(user_id, movie_id, request.timestamp, request.duration, data_dir=DATA_DIR)
+        # Auto-create user if doesn't exist
+        get_or_create_user(db, user_id=user_id)
+        
+        add_watch_history(db, user_id, movie_id)
+        
         return {"status": "ok", "movie_id": movie_id, "user_id": user_id}
     except HTTPException:
         raise
@@ -723,31 +863,25 @@ def add_watch_history(request: WatchHistoryRequest):
 
 
 @app.get("/watchlist/{user_id}")
-def get_user_watchlist(user_id: str):
-    """Lấy danh sách phim yêu thích của user."""
+def get_user_watchlist(user_id: str, db: Session = Depends(get_db)):
+    """DEPRECATED: Use /user/{user_id}/watchlist instead"""
     try:
-        try:
-            from app.data import database as _db
-        except Exception:
-            from data import database as _db
-        
-        watchlist = _db.get_user_watchlist(user_id, data_dir=DATA_DIR)
-        return {"user_id": user_id, "movies": watchlist}
+        from app.data.db_postgresql import get_user_watchlist as pg_get_watchlist
+        watchlist_items = pg_get_watchlist(db, user_id)
+        movies = [item.movie_id for item in watchlist_items if item.movie_id]
+        return {"user_id": user_id, "movies": movies}
     except Exception as e:
         return {"user_id": user_id, "movies": []}
 
 
 @app.get("/watch-history/{user_id}")
-def get_user_watch_history(user_id: str):
-    """Lấy lịch sử xem phim của user."""
+def get_user_watch_history(user_id: str, db: Session = Depends(get_db)):
+    """DEPRECATED: Use /user/{user_id}/watched instead"""
     try:
-        try:
-            from app.data import database as _db
-        except Exception:
-            from data import database as _db
-        
-        history = _db.fetch_watch_history(user_id, data_dir=DATA_DIR)
-        return {"user_id": user_id, "movies": history}
+        from app.data.db_postgresql import get_watch_history as pg_get_history
+        history = pg_get_history(db, user_id, limit=100)
+        movies = [item.movie_id for item in history if item.movie_id]
+        return {"user_id": user_id, "movies": movies}
     except Exception as e:
         return {"user_id": user_id, "movies": []}
 
@@ -869,9 +1003,9 @@ def subscribe_notifications(request: NotificationRequest):
     """Subscribe user to notifications."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         import json
         prefs = {
@@ -894,9 +1028,9 @@ def get_user_notifications(user_id: str):
     """Lấy notifications cho user (movies mới theo genres yêu thích)."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         # Get user preferences
         prefs = _db.get_user_metadata(user_id, data_dir=DATA_DIR)
@@ -933,9 +1067,9 @@ def get_search_history(user_id: str, limit: int = 50):
     """Lấy lịch sử tìm kiếm của user."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         history = _db.fetch_search_history(user_id, limit=limit, data_dir=DATA_DIR)
         return {"user_id": user_id, "history": history}
@@ -948,9 +1082,9 @@ def get_popular_searches(days: int = 7, limit: int = 10):
     """Lấy từ khóa tìm kiếm phổ biến."""
     try:
         try:
-            from app.data import database as _db
+            from app.data import db_postgresql, database
         except Exception:
-            from data import database as _db
+            from data import db_postgresql, database
         
         popular = _db.get_popular_searches(limit=limit, days=days, data_dir=DATA_DIR)
         return {"popular_searches": popular}
@@ -985,3 +1119,192 @@ def refresh_recommendation_models():
         return {"status": "ok" if success else "failed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== USER PROFILE API (PostgreSQL) ====================
+
+@app.get("/user/{user_id}/stats")
+def get_user_stats(user_id: str, db: Session = Depends(get_db)):
+    """Lấy thống kê người dùng từ PostgreSQL"""
+    try:
+        # Get or create user
+        user = get_or_create_user(db, user_id)
+        
+        # Import with alias to avoid conflicts
+        from app.data.db_postgresql import (
+            get_user_ratings as pg_get_ratings,
+            get_user_watchlist as pg_get_watchlist,
+            get_watch_history as pg_get_history
+        )
+        
+        # Get statistics from PostgreSQL
+        ratings = pg_get_ratings(db, user_id)
+        watchlist_items = pg_get_watchlist(db, user_id)
+        watch_history = pg_get_history(db, user_id)
+        reviews = db.query(Review).filter(Review.user_id == user_id).all()
+        
+        # Calculate additional stats
+        completed_movies = [h for h in watch_history if h.completed]
+        
+        # Get favorite genres from ratings
+        favorite_genres = {}
+        for rating in ratings:
+            if rating.movie and rating.movie.genres:
+                for genre in rating.movie.genres:
+                    if isinstance(genre, dict) and 'name' in genre:
+                        genre_name = genre['name']
+                    else:
+                        genre_name = str(genre)
+                    favorite_genres[genre_name] = favorite_genres.get(genre_name, 0) + 1
+        
+        # Top 3 genres
+        top_genres = sorted(favorite_genres.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_genres = [g[0] for g in top_genres]
+        
+        return {
+            "user_id": user_id,
+            "name": user.name or f"User {user_id}",
+            "email": user.email,
+            "total_ratings": len(ratings),
+            "total_watchlist": len(watchlist_items),
+            "total_watched": len(completed_movies),
+            "total_reviews": len(reviews),
+            "favorite_genres": top_genres,
+            "created_at": user.created_at.isoformat() if user.created_at else None
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching user stats: {str(e)}")
+
+
+@app.get("/user/{user_id}/watchlist")
+def get_user_watchlist_movies(user_id: str, db: Session = Depends(get_db)):
+    """Lấy danh sách phim trong watchlist"""
+    try:
+        from app.data.db_postgresql import get_user_watchlist as pg_get_watchlist
+        watchlist_items = pg_get_watchlist(db, user_id)
+        movies = []
+        
+        for item in watchlist_items:
+            if item.movie:
+                # Handle NaN values
+                import math
+                vote_avg = item.movie.vote_average
+                if isinstance(vote_avg, float) and (math.isnan(vote_avg) or math.isinf(vote_avg)):
+                    vote_avg = 0.0
+                
+                movies.append({
+                    "id": item.movie.movie_id,
+                    "title": item.movie.title,
+                    "poster_url": item.movie.poster_url or item.movie.poster_path,
+                    "year": item.movie.year,
+                    "vote_average": vote_avg,
+                    "genres": item.movie.genres,
+                    "added_at": item.added_at.isoformat()
+                })
+        
+        # Enrich with TMDB posters if available
+        if TMDB_AVAILABLE:
+            for movie in movies:
+                if not movie.get('poster_url') or 'picsum' in movie.get('poster_url', ''):
+                    try:
+                        tmdb_poster = get_movie_poster(movie['title'], movie.get('year'))
+                        if tmdb_poster:
+                            movie['poster_url'] = tmdb_poster
+                    except Exception:
+                        pass
+        
+        return {"movies": movies}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/user/{user_id}/watched")
+def get_user_watched_movies(user_id: str, db: Session = Depends(get_db)):
+    """Lấy danh sách phim đã xem"""
+    try:
+        from app.data.db_postgresql import get_watch_history as pg_get_history
+        history = pg_get_history(db, user_id, limit=50)
+        movies = []
+        
+        for item in history:
+            if item.movie:
+                # Handle NaN values
+                import math
+                vote_avg = item.movie.vote_average
+                if isinstance(vote_avg, float) and (math.isnan(vote_avg) or math.isinf(vote_avg)):
+                    vote_avg = 0.0
+                
+                movies.append({
+                    "id": item.movie.movie_id,
+                    "title": item.movie.title,
+                    "poster_url": item.movie.poster_url or item.movie.poster_path,
+                    "year": item.movie.year,
+                    "vote_average": vote_avg,
+                    "watched_at": item.watched_at.isoformat(),
+                    "progress": item.progress,
+                    "completed": item.completed
+                })
+        
+        # Enrich with TMDB posters if available
+        if TMDB_AVAILABLE:
+            for movie in movies:
+                if not movie.get('poster_url') or 'picsum' in movie.get('poster_url', ''):
+                    try:
+                        tmdb_poster = get_movie_poster(movie['title'], movie.get('year'))
+                        if tmdb_poster:
+                            movie['poster_url'] = tmdb_poster
+                    except Exception:
+                        pass
+        
+        return {"movies": movies}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/user/{user_id}/watchlist/toggle")
+def toggle_watchlist(user_id: str, movie_id: int, db: Session = Depends(get_db)):
+    """Thêm/xóa phim khỏi watchlist"""
+    try:
+        # Ensure user exists first
+        get_or_create_user(db, user_id)
+        
+        movie_id_str = str(movie_id)
+        
+        # Check if exists
+        existing = db.query(Watchlist).filter(
+            Watchlist.user_id == user_id,
+            Watchlist.movie_id == movie_id_str
+        ).first()
+        
+        if existing:
+            remove_from_watchlist(db, user_id, movie_id_str)
+            return {"action": "removed", "in_watchlist": False}
+        else:
+            add_to_watchlist(db, user_id, movie_id_str)
+            return {"action": "added", "in_watchlist": True}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/user/{user_id}/watch-progress")
+def update_watch_progress(
+    user_id: str, 
+    movie_id: int, 
+    progress: float = 0.0, 
+    completed: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Cập nhật tiến độ xem phim"""
+    try:
+        movie_id_str = str(movie_id)
+        add_watch_history(db, user_id, movie_id_str, progress, completed)
+        return {"success": True, "progress": progress, "completed": completed}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+

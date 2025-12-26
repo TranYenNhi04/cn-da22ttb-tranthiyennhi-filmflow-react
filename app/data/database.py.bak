@@ -206,9 +206,11 @@ def get_connection(data_dir=None):
 
 
 def fetch_ratings_df(data_dir=None):
+    """Fetch ratings from SQLite (CSV data is already synced with movies)"""
     conn = get_connection(data_dir)
     try:
         df = pd.read_sql_query("SELECT userId, movieId, rating, timestamp FROM ratings", conn)
+        print(f"📁 Loaded {len(df)} ratings from SQLite")
     finally:
         conn.close()
     return df

@@ -6,16 +6,8 @@ Handles database initialization and connection management
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-# Import database functions
-try:
-    from data.db_postgresql import init_db, close_db, engine
-    USE_POSTGRESQL = True
-    print("✅ Using PostgreSQL database")
-except Exception as e:
-    print(f"⚠️  PostgreSQL not available: {e}")
-    print("💡 Falling back to SQLite/CSV")
-    from data import database
-    USE_POSTGRESQL = False
+# Import PostgreSQL database functions
+from data.db_postgresql import init_db, close_db, engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,31 +18,24 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting FilmFlow API...")
     
-    if USE_POSTGRESQL:
-        try:
-            # Initialize PostgreSQL database
-            print("📊 Initializing PostgreSQL database...")
-            init_db()
-            
-            # Test connection
-            from data.db_postgresql import get_db_session
-            with get_db_session() as db:
-                from data.models import Movie
-                count = db.query(Movie).count()
-                print(f"✅ PostgreSQL connected! Movies in database: {count}")
+    try:
+        # Initialize PostgreSQL database
+        print("📊 Initializing PostgreSQL database...")
+        init_db()
         
-        except Exception as e:
-            print(f"❌ PostgreSQL initialization failed: {e}")
-            print("💡 Please run migration script: python scripts/migrate_to_postgresql.py")
-    else:
-        # Initialize SQLite database
-        print("📊 Initializing SQLite database...")
-        try:
-            from data import database
-            database.init_db()
-            print("✅ SQLite database initialized")
-        except Exception as e:
-            print(f"⚠️  Database initialization warning: {e}")
+        # Test connection
+        from data.db_postgresql import get_db_session
+        with get_db_session() as db:
+            from data.models import Movie, Rating
+            movie_count = db.query(Movie).count()
+            rating_count = db.query(Rating).count()
+            print(f"✅ PostgreSQL connected!")
+            print(f"   📊 Movies: {movie_count}, Ratings: {rating_count}")
+    
+    except Exception as e:
+        print(f"❌ PostgreSQL initialization failed: {e}")
+        print("💡 Please run migration script: python scripts/migrate_sqlite_to_pg_fixed.py")
+        raise
     
     print("✅ FilmFlow API ready!")
     
@@ -59,37 +44,31 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("🛑 Shutting down FilmFlow API...")
     
-    if USE_POSTGRESQL:
-        try:
-            print("📊 Closing PostgreSQL connections...")
-            close_db()
-            print("✅ PostgreSQL connections closed")
-        except Exception as e:
-            print(f"⚠️  Error closing database: {e}")
+    try:
+        print("📊 Closing PostgreSQL connections...")
+        close_db()
+        print("✅ PostgreSQL connections closed")
+    except Exception as e:
+        print(f"⚠️  Error closing database: {e}")
     
     print("👋 FilmFlow API stopped")
 
 def get_database_info():
     """Get information about current database configuration"""
-    if USE_POSTGRESQL:
-        try:
-            from data.db_postgresql import get_db_session, count_movies, count_users, count_ratings
-            with get_db_session() as db:
-                return {
-                    "type": "PostgreSQL",
-                    "status": "connected",
-                    "movies": count_movies(db),
-                    "users": count_users(db),
-                    "ratings": count_ratings(db)
-                }
-        except Exception as e:
+    try:
+        from data.db_postgresql import get_db_session
+        from data.models import Movie, User, Rating
+        with get_db_session() as db:
             return {
                 "type": "PostgreSQL",
-                "status": "error",
-                "error": str(e)
+                "status": "connected",
+                "movies": db.query(Movie).count(),
+                "users": db.query(User).count(),
+                "ratings": db.query(Rating).count()
             }
-    else:
+    except Exception as e:
         return {
-            "type": "SQLite/CSV",
-            "status": "connected"
+            "type": "PostgreSQL",
+            "status": "error",
+            "error": str(e)
         }

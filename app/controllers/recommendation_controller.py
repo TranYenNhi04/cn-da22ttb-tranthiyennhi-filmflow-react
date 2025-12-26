@@ -1,7 +1,7 @@
-from models.collaborative_model import CollaborativeModel
-from models.content_based_model import ContentBasedModel
-from models.hybrid_model import HybridModel
-from models.personalized_model import PersonalizedRecommendationModel
+from app.models.collaborative_model import CollaborativeModel
+from app.models.content_based_model import ContentBasedModel
+from app.models.hybrid_model import HybridModel
+from app.models.personalized_model import PersonalizedRecommendationModel
 
 class RecommendationController:
     def __init__(self, data_dir=None):

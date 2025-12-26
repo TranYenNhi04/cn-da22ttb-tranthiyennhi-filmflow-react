@@ -1,6 +1,6 @@
 # app/controllers/movie_controller.py
 import pandas as pd
-from models.movie_model import MovieModel
+from app.models.movie_model import MovieModel
 import os
 
 class MovieController:

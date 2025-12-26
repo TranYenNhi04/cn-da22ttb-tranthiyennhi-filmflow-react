@@ -74,6 +74,15 @@ def migrate_movies(data_dir: str):
                         except:
                             pass
                     
+                    # Generate TMDB poster URL if not available
+                    poster_url = row.get('poster_url')
+                    poster_path = row.get('poster_path')
+                    if not poster_url and not poster_path:
+                        # Use TMDB poster URL pattern with movie ID
+                        # Most TMDB posters are at: https://image.tmdb.org/t/p/w500/{movie_id}.jpg
+                        # But we'll use a placeholder that can be updated later
+                        poster_url = f"https://image.tmdb.org/t/p/w500/movie_{row['id']}.jpg"
+                    
                     movie = Movie(
                         movie_id=str(row['id']),
                         title=row.get('title', 'Unknown'),
@@ -84,8 +93,8 @@ def migrate_movies(data_dir: str):
                         keywords=row.get('keywords'),
                         cast_data=cast_data,
                         director=row.get('director'),
-                        poster_url=row.get('poster_url'),
-                        poster_path=row.get('poster_path'),
+                        poster_url=poster_url,
+                        poster_path=poster_path,
                         backdrop_path=row.get('backdrop_path'),
                         release_date=str(row.get('release_date')) if pd.notna(row.get('release_date')) else None,
                         year=year,
@@ -142,12 +151,13 @@ def migrate_ratings(data_dir: str):
             
             for _, row in batch.iterrows():
                 try:
-                    # Create user if doesn't exist
-                    user_id = str(row['userId'])
+                    # Convert to int first to remove decimal, then to string
+                    user_id = str(int(float(row['userId'])))
+                    movie_id = str(int(float(row['movieId'])))
                     
                     rating = Rating(
                         user_id=user_id,
-                        movie_id=str(row['movieId']),
+                        movie_id=movie_id,
                         rating=float(row['rating']),
                         timestamp=datetime.fromtimestamp(int(row['timestamp'])) if pd.notna(row.get('timestamp')) else datetime.utcnow()
                     )
@@ -196,8 +206,8 @@ def migrate_reviews(data_dir: str):
             for _, row in batch.iterrows():
                 try:
                     review = Review(
-                        movie_id=str(row['movieId']),
-                        user_id=str(row['userId']),
+                        movie_id=str(int(float(row['movieId']))),
+                        user_id=str(int(float(row['userId']))),
                         username=row.get('username', 'Anonymous'),
                         rating=int(row['rating']),
                         review_text=row.get('review', ''),
@@ -222,12 +232,19 @@ def create_sample_users(data_dir: str):
     """Create sample users from existing ratings"""
     print("👥 Creating users from ratings...")
     
+    # Read unique user IDs from ratings CSV
+    ratings_csv = os.path.join(data_dir, 'ratings_processed.csv')
+    if not os.path.exists(ratings_csv):
+        print("⚠️  Ratings file not found, skipping user creation")
+        return
+    
+    df = pd.read_csv(ratings_csv)
+    # Convert to int to remove decimals
+    unique_user_ids = [str(int(float(uid))) for uid in df['userId'].unique()]
+    
     with get_db_session() as db:
-        # Get unique user IDs from ratings
-        unique_user_ids = db.query(Rating.user_id).distinct().all()
-        
         users_to_create = []
-        for (user_id,) in unique_user_ids:
+        for user_id in unique_user_ids:
             # Check if user exists
             existing = db.query(User).filter(User.user_id == user_id).first()
             if not existing:
@@ -263,13 +280,13 @@ def main():
         print("\n2️⃣  Migrating movies...")
         migrate_movies(data_dir)
         
-        # Migrate ratings
-        print("\n3️⃣  Migrating ratings...")
-        migrate_ratings(data_dir)
-        
-        # Create users from ratings
-        print("\n4️⃣  Creating users...")
+        # Create users from ratings FIRST (before ratings migration)
+        print("\n3️⃣  Creating users...")
         create_sample_users(data_dir)
+        
+        # Migrate ratings (requires users to exist)
+        print("\n4️⃣  Migrating ratings...")
+        migrate_ratings(data_dir)
         
         # Migrate reviews
         print("\n5️⃣  Migrating reviews...")

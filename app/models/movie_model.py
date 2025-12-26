@@ -1,10 +1,13 @@
 import pandas as pd
 import os
+from datetime import datetime
 try:
-    from app.data import database
+    from app.data import db_postgresql
+    from app.data.models import Rating, Review
 except Exception:
     # fallback when package root is different inside containers
-    from data import database
+    from data import db_postgresql
+    from data.models import Rating, Review
 
 
 def _safe_read_csv(path, default_columns=None, usecols=None, low_memory=True):
@@ -45,23 +48,9 @@ class MovieModel:
         # Read movies from CSV (static metadata)
         self.movies_df = _safe_read_csv(movies_path)
 
-        # Initialize database and import CSVs into SQLite if needed
-        try:
-            database.init_db(data_dir)
-        except Exception:
-            # ignore DB init failures for environments without pandas/sqlite
-            pass
-
-        # Load ratings/reviews from DB (fallback to CSV if DB not available)
-        try:
-            self.ratings_df = database.fetch_ratings_df(data_dir)
-        except Exception:
-            self.ratings_df = _safe_read_csv(ratings_path)
-
-        try:
-            self.reviews_df = database.fetch_reviews_df(data_dir)
-        except Exception:
-            self.reviews_df = _safe_read_csv(reviews_path, default_columns=['movieId', 'userId', 'rating', 'review'])
+        # Load ratings/reviews from PostgreSQL
+        self.ratings_df = self._fetch_ratings_from_db()
+        self.reviews_df = self._fetch_reviews_from_db()
 
         self.data_dir = data_dir
         self.reviews_path = reviews_path
@@ -73,6 +62,50 @@ class MovieModel:
                 self.movies_df['title_lower'] = ''
         except Exception:
             self.movies_df['title_lower'] = ''
+    
+    def _fetch_ratings_from_db(self):
+        """Fetch ratings from PostgreSQL database"""
+        try:
+            with db_postgresql.get_db_session() as db:
+                ratings = db.query(Rating).all()
+                if not ratings:
+                    return pd.DataFrame(columns=['userId', 'movieId', 'rating', 'timestamp'])
+                
+                data = []
+                for r in ratings:
+                    data.append({
+                        'userId': r.user_id,
+                        'movieId': int(r.movie_id) if r.movie_id.isdigit() else r.movie_id,
+                        'rating': r.rating,
+                        'timestamp': r.timestamp.isoformat() if r.timestamp else None
+                    })
+                return pd.DataFrame(data)
+        except Exception as e:
+            print(f"❌ Error fetching ratings from PostgreSQL: {e}")
+            # Fallback to empty dataframe
+            return pd.DataFrame(columns=['userId', 'movieId', 'rating', 'timestamp'])
+    
+    def _fetch_reviews_from_db(self):
+        """Fetch reviews from PostgreSQL database"""
+        try:
+            with db_postgresql.get_db_session() as db:
+                reviews = db.query(Review).all()
+                if not reviews:
+                    return pd.DataFrame(columns=['movieId', 'userId', 'rating', 'review'])
+                
+                data = []
+                for r in reviews:
+                    data.append({
+                        'movieId': int(r.movie_id) if r.movie_id.isdigit() else r.movie_id,
+                        'userId': r.user_id,
+                        'rating': r.rating,
+                        'review': r.review_text
+                    })
+                return pd.DataFrame(data)
+        except Exception as e:
+            print(f"❌ Error fetching reviews from PostgreSQL: {e}")
+            # Fallback to empty dataframe
+            return pd.DataFrame(columns=['movieId', 'userId', 'rating', 'review'])
 
     def search_movies(self, query):
         """Search movies by partial/prefix matching with relevance scoring.
@@ -231,32 +264,81 @@ class MovieModel:
             return False
 
     def record_rating(self, movie_id, user_id='Anonymous', rating=5):
+        """Record rating in PostgreSQL database"""
         try:
-            database.insert_rating(movie_id, user_id, rating, data_dir=self.data_dir)
-            # refresh ratings_df
-            try:
-                self.ratings_df = database.fetch_ratings_df(self.data_dir)
-            except Exception:
-                pass
+            with db_postgresql.get_db_session() as db:
+                from app.data.db_postgresql import get_or_create_user, add_rating
+                
+                # Ensure user exists
+                get_or_create_user(db, user_id)
+                
+                # Add rating to database
+                add_rating(db, user_id, str(movie_id), float(rating))
+                
+                # Refresh ratings_df from database
+                self.ratings_df = self._fetch_ratings_from_db()
+                
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error recording rating: {e}")
             return False
     
     def get_movie_reviews(self, movie_id):
         return self.reviews_df[self.reviews_df['movieId'] == movie_id].to_dict('records')
 
     def add_comment(self, movie_id, user_id, comment_text):
+        """Add comment as a review in PostgreSQL"""
         try:
-            database.insert_comment(movie_id, user_id, comment_text, data_dir=self.data_dir)
+            with db_postgresql.get_db_session() as db:
+                from app.data.db_postgresql import get_or_create_user
+                from app.data.models import Review
+                
+                # Ensure user exists
+                get_or_create_user(db, user_id)
+                
+                # Create review with comment (rating 0 for comments without rating)
+                review = Review(
+                    movie_id=str(movie_id),
+                    user_id=user_id,
+                    username=user_id,
+                    rating=0,  # 0 means comment-only, no rating
+                    review_text=comment_text,
+                    timestamp=datetime.utcnow()
+                )
+                db.add(review)
+                db.commit()
+                
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error adding comment: {e}")
             return False
 
     def get_movie_comments(self, movie_id, limit=50, offset=0):
+        """Get comments from PostgreSQL Review table"""
         try:
-            return database.fetch_comments(movie_id, limit=limit, offset=offset, data_dir=self.data_dir)
-        except Exception:
-            # fallback to no comments
+            with db_postgresql.get_db_session() as db:
+                from app.data.models import Review
+                
+                # Fetch reviews for this movie
+                reviews = db.query(Review).filter(
+                    Review.movie_id == str(movie_id)
+                ).order_by(Review.timestamp.desc()).offset(offset).limit(limit).all()
+                
+                # Convert to dict format
+                comments = []
+                for r in reviews:
+                    comments.append({
+                        'id': r.id,
+                        'movieId': int(r.movie_id) if r.movie_id.isdigit() else r.movie_id,
+                        'userId': r.user_id,
+                        'username': r.username or r.user_id,
+                        'rating': r.rating,
+                        'comment': r.review_text,
+                        'timestamp': r.timestamp.isoformat() if r.timestamp else None
+                    })
+                return comments
+        except Exception as e:
+            print(f"❌ Error fetching comments: {e}")
             return []
 
     def add_interaction(self, movie_id, user_id='Anonymous', action='like'):

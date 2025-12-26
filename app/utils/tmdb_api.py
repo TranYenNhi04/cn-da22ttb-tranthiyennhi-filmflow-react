@@ -68,3 +68,28 @@ def get_movie_poster(movie_title: str) -> str | None:
     """
     data = get_movie_data(movie_title)
     return data.get("poster_url") if data else None
+
+def get_movie_details(movie_id: int):
+    """
+    Lấy chi tiết phim từ TMDB theo ID.
+    Trả về dict với thông tin phim hoặc None.
+    """
+    if not TMDB_API_KEY:
+        print("TMDB_API_KEY chưa được set")
+        return None
+
+    try:
+        url = f"{TMDB_BASE_URL}/movie/{movie_id}"
+        params = {
+            "api_key": TMDB_API_KEY,
+            "language": "vi-VN"
+        }
+        
+        resp = requests.get(url, params=params, timeout=5)
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+        
+    except Exception as e:
+        print(f"Error fetching movie {movie_id}: {e}")
+        return None

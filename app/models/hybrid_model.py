@@ -6,8 +6,8 @@ import os
 # Thêm thư mục gốc vào PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from models.collaborative_model import CollaborativeModel
-from models.content_based_model import ContentBasedModel
+from app.models.collaborative_model import CollaborativeModel
+from app.models.content_based_model import ContentBasedModel
 
 class HybridModel:
     def __init__(self, data_dir=None):
@@ -56,12 +56,18 @@ class HybridModel:
             final_recommendations = []
             for movie_id in top_movie_ids:
                 movie_info = self.content_based_model.movies_df[self.content_based_model.movies_df['id'] == movie_id].iloc[0]
-                final_recommendations.append(movie_info.to_dict())
+                movie_dict = movie_info.to_dict()
+                # Replace NaN/inf with None for JSON serialization
+                movie_dict = {k: (None if pd.isna(v) or (isinstance(v, float) and np.isinf(v)) else v) for k, v in movie_dict.items()}
+                final_recommendations.append(movie_dict)
         else:
             # Lấy thông tin chi tiết của các phim trong phần giao
             final_recommendations = []
             for movie_id in list(common_movie_ids)[:n_recommendations]:
                 movie_info = self.content_based_model.movies_df[self.content_based_model.movies_df['id'] == movie_id].iloc[0]
-                final_recommendations.append(movie_info.to_dict())
+                movie_dict = movie_info.to_dict()
+                # Replace NaN/inf with None for JSON serialization
+                movie_dict = {k: (None if pd.isna(v) or (isinstance(v, float) and np.isinf(v)) else v) for k, v in movie_dict.items()}
+                final_recommendations.append(movie_dict)
         
         return final_recommendations 

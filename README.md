@@ -7,10 +7,11 @@
 [![React](https://img.shields.io/badge/React-18+-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 **Nền tảng xem phim với AI gợi ý cá nhân hóa, giao diện đẹp mắt và trải nghiệm người dùng tuyệt vời**
 
-[Tính Năng](#-tính-năng-nổi-bật) • [Cài Đặt](#-cài-đặt) • [Sử Dụng](#-hướng-dẫn-sử-dụng) • [API](#-api-documentation) • [Công Nghệ](#-công-nghệ-sử-dụng)
+[Tính Năng](#-tính-năng-nổi-bật) • [Cài Đặt](#-cài-đặt) • [Cải Thiện Mới](#-các-cải-thiện-mới) • [API](#-api-documentation) • [Công Nghệ](#-công-nghệ-sử-dụng)
 
 </div>
 
@@ -19,6 +20,7 @@
 ## 📋 Mục Lục
 
 - [Giới Thiệu](#-giới-thiệu)
+- [Các Cải Thiện Mới](#-các-cải-thiện-mới)
 - [Tính Năng Nổi Bật](#-tính-năng-nổi-bật)
 - [Demo & Screenshots](#-demo--screenshots)
 - [Công Nghệ Sử Dụng](#-công-nghệ-sử-dụng)
@@ -46,6 +48,46 @@
 - 🎬 **Rich Media** - Tích hợp TMDB API và YouTube trailers
 - 💾 **Data Persistence** - Lưu trữ lịch sử xem và đánh giá người dùng
 - 🐳 **Docker Ready** - Dễ dàng deploy với Docker Compose
+- 🔒 **Secure** - Rate limiting, CORS protection, API key management
+- ✅ **Tested** - Unit tests, CI/CD pipeline với GitHub Actions
+
+---
+
+#### ✨ Cải Thiện SEO & Hiệu Năng
+- ✅ Thêm đầy đủ thẻ meta (Open Graph, Twitter Card) để tối ưu chia sẻ và SEO
+- ✅ Sử dụng component LazyImage với Intersection Observer để tải ảnh lười (lazy load)
+- ✅ Kết nối trước (preconnect) và dự đoán DNS cho các tài nguyên ngoài
+- ✅ Tối ưu cấu trúc HTML cho tốc độ tải trang
+
+#### 🎨 Chất Lượng Mã Nguồn
+- ✅ Cấu hình ESLint để kiểm tra chuẩn mã nguồn JavaScript
+- ✅ Thiết lập Prettier để định dạng code nhất quán
+- ✅ Thêm các lệnh npm: `lint`, `lint:fix`, `format` để kiểm tra và tự động sửa code
+
+#### 📊 Phân Trang
+- ✅ Component Pagination với đầy đủ tính năng phân trang
+- ✅ Giao diện responsive thích ứng mọi thiết bị
+- ✅ Điều hướng trang: đầu, trước, sau, cuối (first, prev, next, last)
+
+#### 🔒 Bảo Mật
+- ✅ Middleware giới hạn số lượng request (100 request/phút mặc định)
+- ✅ Cấu hình CORS linh hoạt qua biến môi trường
+- ✅ Bảo vệ API key bằng file `.env`
+- ✅ Cập nhật `.gitignore` để loại trừ các file nhạy cảm
+
+#### 🧪 Kiểm Thử
+- ✅ Viết unit test cho các component React
+- ✅ Viết test cho API backend bằng pytest
+- ✅ Test middleware giới hạn request
+- ✅ Báo cáo độ bao phủ kiểm thử (test coverage)
+
+#### 🚀 CI/CD
+- ✅ Workflow GitHub Actions
+- ✅ Tự động kiểm thử khi đẩy code hoặc tạo pull request
+- ✅ Kiểm tra lint và format code tự động
+- ✅ Kiểm tra build Docker tự động
+
+📖 **Xem chi tiết:** [IMPROVEMENTS.md](IMPROVEMENTS.md)
 
 ---
 
@@ -159,14 +201,14 @@
 | **CSS3** | Styling | - |
 | **JavaScript ES6+** | Logic | - |
 
-**Features:**
-- Modern React Hooks (useState, useEffect, useRef)
-- Responsive Design với CSS Grid/Flexbox
-- CSS Animations cho smooth transitions
-- LocalStorage để cache và persistence
-- Lazy Loading cho images
-- Debounced Search
-- Skeleton Loading states
+**Tính năng nổi bật của Frontend:**
+- Sử dụng các React Hooks hiện đại (useState, useEffect, useRef)
+- Thiết kế responsive với CSS Grid/Flexbox, hiển thị đẹp trên mọi thiết bị
+- Hiệu ứng chuyển động mượt mà với CSS Animations
+- Lưu trữ dữ liệu cục bộ bằng LocalStorage để tăng tốc và giữ trạng thái
+- Tải ảnh (Lazy Loading) giúp tối ưu tốc độ tải trang
+- Tìm kiếm tối ưu với Debounced Search (giảm số lần gọi API khi nhập)
+- Hiển thị trạng thái loading với hiệu ứng Skeleton Loading
 
 ### DevOps & Tools
 

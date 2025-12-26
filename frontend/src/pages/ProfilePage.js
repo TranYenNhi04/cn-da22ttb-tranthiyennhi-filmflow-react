@@ -21,137 +21,149 @@ export default function ProfilePage() {
     if (storedUser) {
       const userData = JSON.parse(storedUser);
       setUser(userData);
-      fetchProfile(userData.userId);
+      // Always skip cache on mount to get fresh data
+      fetchProfile(userData.userId, true);
     } else {
       setLoading(false);
     }
   }, []);
 
-  const fetchProfile = async (userId) => {
-    // Try cache first for instant display
-    try {
-      const cacheKey = `profile_${userId}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const data = JSON.parse(cached);
-        setProfile(data.profile);
-        setPreferences(data.preferences || {});
-        setWatchlist(data.watchlist || []);
-        setWatchHistory(data.history || []);
-        setLoading(false);
-        setInitialLoad(false);
-      }
-    } catch (e) {}
+  const fetchProfile = async (userId, skipCache = false) => {
+    // Try cache first for instant display (unless skipCache is true)
+    if (!skipCache) {
+      try {
+        const cacheKey = `profile_${userId}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const data = JSON.parse(cached);
+          setProfile(data.profile);
+          setPreferences(data.preferences || {});
+          setWatchlist(data.watchlist || []);
+          setWatchHistory(data.history || []);
+          setLoading(false);
+          setInitialLoad(false);
+        }
+      } catch (e) {}
+    }
     
     try {
-      const response = await fetch(`${API_BASE}/user/${userId}/profile`);
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-        
-        // Get preferences
-        try {
-          const prefsRes = await fetch(`${API_BASE}/user/${userId}/preferences`);
-          if (prefsRes.ok) {
-            const prefs = await prefsRes.json();
-            setPreferences(prefs.preferences || {});
-          }
-        } catch (e) {
-          console.warn('Failed to fetch preferences:', e);
-        }
-        
-        // Get watchlist
-        try {
-          // Try localStorage cache first
-          const cacheKey = `watchlist_${userId}`;
-          const cached = localStorage.getItem(cacheKey);
-          if (cached) {
-            const watchlistMovies = JSON.parse(cached);
-            
-            // Deduplicate by movie ID
-            const uniqueMovies = [];
-            const seenIds = new Set();
-            watchlistMovies.forEach(movie => {
-              if (!seenIds.has(movie.id)) {
-                seenIds.add(movie.id);
-                uniqueMovies.push(movie);
-              }
-            });
-            
-            setWatchlist(uniqueMovies);
-            
-            // Build movie data map
-            const movieMap = {};
-            watchlistMovies.forEach(movie => {
-              movieMap[movie.id] = movie;
-            });
-            setMovieData(prev => ({...prev, ...movieMap}));
-          } else {
-            // Fallback to API
-            const watchlistRes = await fetch(`${API_BASE}/watchlist/${userId}`);
-            if (watchlistRes.ok) {
-              const watchlistData = await watchlistRes.json();
-              setWatchlist(watchlistData.movies || watchlistData.watchlist || []);
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to fetch watchlist:', e);
-        }
-        
-        // Get watch history
-        try {
-          const historyRes = await fetch(`${API_BASE}/watch-history/${userId}`);
-          if (historyRes.ok) {
-            const historyData = await historyRes.json();
-            const history = historyData.movies || historyData.history || [];
-            
-            // Deduplicate by movieId - keep only most recent entry for each movie
-            const uniqueHistory = [];
-            const seenMovieIds = new Set();
-            history.forEach(entry => {
-              if (!seenMovieIds.has(entry.movieId)) {
-                seenMovieIds.add(entry.movieId);
-                uniqueHistory.push(entry);
-              }
-            });
-            
-            setWatchHistory(uniqueHistory);
-            
-            // Fetch movie details for history items
-            const movieIds = history.map(h => h.movieId).filter(Boolean);
-            if (movieIds.length > 0) {
-              try {
-                // Try to get from trending/all movies
-                const moviesRes = await fetch(`${API_BASE}/movies/trending?limit=100`);
-                if (moviesRes.ok) {
-                  const moviesData = await moviesRes.json();
-                  const movies = moviesData.movies || moviesData.data || moviesData || [];
-                  const movieMap = {};
-                  movies.forEach(movie => {
-                    movieMap[movie.id] = movie;
-                  });
-                  setMovieData(prev => ({...prev, ...movieMap}));
-                }
-              } catch (e) {
-                console.warn('Failed to fetch movie details:', e);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to fetch history:', e);
-        }
-        
-        // Cache everything for next time
-        try {
-          const cacheKey = `profile_${userId}`;
-          localStorage.setItem(cacheKey, JSON.stringify({
-            profile: data,
-            preferences: preferences,
-            watchlist: watchlist,
-            history: watchHistory
-          }));
-        } catch (e) {}
+      // Fetch user stats from new PostgreSQL API
+      const statsResponse = await fetch(`${API_BASE}/user/${userId}/stats`);
+      if (statsResponse.ok) {
+        const stats = await statsResponse.json();
+        setProfile({
+          userId: userId,
+          name: stats.name || user?.name,
+          email: stats.email || user?.email,
+          totalRatings: stats.total_ratings || 0,
+          totalWatchlist: stats.total_watchlist || 0,
+          totalWatched: stats.total_watched || 0,
+          totalReviews: stats.total_reviews || 0,
+          favoriteGenres: stats.favorite_genres || [],
+          createdAt: stats.created_at
+        });
       }
+      
+      // Get preferences (keep old logic)
+      try {
+        const prefsRes = await fetch(`${API_BASE}/user/${userId}/preferences`);
+        if (prefsRes.ok) {
+          const prefs = await prefsRes.json();
+          setPreferences(prefs.preferences || {});
+        }
+      } catch (e) {
+        console.warn('Failed to fetch preferences:', e);
+      }
+      
+      // Get watchlist from new PostgreSQL API
+      try {
+        const watchlistRes = await fetch(`${API_BASE}/user/${userId}/watchlist`);
+        if (watchlistRes.ok) {
+          const watchlistData = await watchlistRes.json();
+          const movies = watchlistData.movies || [];
+          
+          // Deduplicate by movie ID
+          const uniqueMovies = [];
+          const seenIds = new Set();
+          movies.forEach(movie => {
+            const movieId = movie.id || movie.movie_id;
+            if (!seenIds.has(movieId)) {
+              seenIds.add(movieId);
+              uniqueMovies.push({
+                ...movie,
+                id: movieId,
+                poster_url: movie.poster_url || movie.poster_path
+              });
+            }
+          });
+          
+          setWatchlist(uniqueMovies);
+          
+          // Build movie data map
+          const movieMap = {};
+          uniqueMovies.forEach(movie => {
+            movieMap[movie.id] = movie;
+          });
+          setMovieData(prev => ({...prev, ...movieMap}));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch watchlist:', e);
+      }
+      
+      // Get watch history from new PostgreSQL API
+      try {
+        const historyRes = await fetch(`${API_BASE}/user/${userId}/watched`);
+        if (historyRes.ok) {
+          const historyData = await historyRes.json();
+          const movies = historyData.movies || [];
+          
+          // Deduplicate by movieId - keep only most recent entry for each movie
+          const uniqueHistory = [];
+          const seenMovieIds = new Set();
+          movies.forEach(movie => {
+            const movieId = movie.id || movie.movie_id;
+            if (!seenMovieIds.has(movieId)) {
+              seenMovieIds.add(movieId);
+              uniqueHistory.push({
+                movieId: movieId,
+                watchedAt: movie.watched_at,
+                progress: movie.progress,
+                completed: movie.completed,
+                ...movie
+              });
+            }
+          });
+          
+          setWatchHistory(uniqueHistory);
+          
+          // Build movie data map
+          const movieMap = {};
+          uniqueHistory.forEach(entry => {
+            movieMap[entry.movieId] = {
+              id: entry.movieId,
+              title: entry.title,
+              poster_url: entry.poster_url || entry.poster_path,
+              year: entry.year,
+              vote_average: entry.vote_average
+            };
+          });
+          setMovieData(prev => ({...prev, ...movieMap}));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch watch history:', e);
+      }
+      
+      // Cache everything for next time
+      try {
+        const cacheKey = `profile_${userId}`;
+        localStorage.setItem(cacheKey, JSON.stringify({
+          profile: profile,
+          preferences: preferences,
+          watchlist: watchlist,
+          history: watchHistory
+        }));
+      } catch (e) {}
+      
       setLoading(false);
       setInitialLoad(false);
     } catch (error) {
@@ -184,6 +196,8 @@ export default function ProfilePage() {
       });
       if (response.ok) {
         setPreferences({ ...preferences, favorite_genres: genres });
+        // Refresh profile data
+        fetchProfile(user.userId);
       }
     } catch (error) {
       console.error('Failed to update preferences:', error);
@@ -192,25 +206,25 @@ export default function ProfilePage() {
   
   const removeFromWatchlist = async (movieId) => {
     try {
-      const response = await fetch(`${API_BASE}/watchlist`, {
+      // Use new PostgreSQL API endpoint
+      const response = await fetch(`${API_BASE}/user/${user.userId}/watchlist/toggle?movie_id=${movieId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          movie_id: movieId,
-          user_id: user.userId,
-          action: 'remove'
-        })
+        headers: { 'Content-Type': 'application/json' }
       });
+      
       if (response.ok) {
-        const updatedWatchlist = watchlist.filter(m => m.id !== movieId);
-        setWatchlist(updatedWatchlist);
-        
-        // Update localStorage cache
-        try {
-          const cacheKey = `watchlist_${user.userId}`;
-          localStorage.setItem(cacheKey, JSON.stringify(updatedWatchlist));
-        } catch (e) {
-          console.warn('Failed to update watchlist cache:', e);
+        const result = await response.json();
+        if (result.action === 'removed') {
+          const updatedWatchlist = watchlist.filter(m => m.id !== movieId);
+          setWatchlist(updatedWatchlist);
+          
+          // Update localStorage cache
+          try {
+            const cacheKey = `watchlist_${user.userId}`;
+            localStorage.setItem(cacheKey, JSON.stringify(updatedWatchlist));
+          } catch (e) {
+            console.warn('Failed to update watchlist cache:', e);
+          }
         }
       } else {
         console.error('Failed to remove from watchlist:', await response.text());
@@ -263,9 +277,6 @@ export default function ProfilePage() {
           <div className="profile-avatar">👤</div>
           <div className="profile-info">
             <h1>{user.userId}</h1>
-            {profile && (
-              <p>{profile.watched_count} phim đã xem • {profile.watchlist_count} phim đã lưu</p>
-            )}
           </div>
         </div>
 
@@ -345,15 +356,15 @@ export default function ProfilePage() {
           <h2>📊 Thống Kê</h2>
           <div className="stats-grid">
             <div className="stat-card">
-              <div className="stat-value">{profile?.total_ratings || 0}</div>
+              <div className="stat-value">{profile?.totalRatings || 0}</div>
               <div className="stat-label">Đánh Giá</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{watchlist?.length || 0}</div>
+              <div className="stat-value">{profile?.totalWatchlist || 0}</div>
               <div className="stat-label">Phim Đã Lưu</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{preferences.favorite_genres?.length || 0}</div>
+              <div className="stat-value">{profile?.favoriteGenres?.length || 0}</div>
               <div className="stat-label">Thể Loại Yêu Thích</div>
             </div>
           </div>

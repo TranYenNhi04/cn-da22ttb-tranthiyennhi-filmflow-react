@@ -2,40 +2,54 @@ import React, { useEffect, useState, useRef } from 'react';
 import './HomePage.css';
 import { API_BASE } from '../config';
 import { MovieGridSkeleton, SectionSkeleton } from '../components/MovieSkeleton';
+import LazyImage from '../components/LazyImage';
 
 function MovieCard({ movie, commentCounts, onClick }) {
   const poster = movie.poster_url || movie.poster_path || movie.poster;
+  const rating = parseFloat(movie.vote_average) || 0;
+  const ratingColor = rating >= 8 ? '#4caf50' : rating >= 7 ? '#ffc107' : '#ff9800';
+  
   return (
-    <div className="movie-card" onClick={() => onClick && onClick(movie)}>
-      <div className="movie-thumb">
+    <div className="movie-card-clean" onClick={() => onClick && onClick(movie)}>
+      <div className="card-poster-container">
         {poster ? (
-          <img 
-            src={poster} 
-            alt={movie.title} 
-            loading="lazy" 
-            decoding="async"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = `https://picsum.photos/seed/${movie.id || movie.title}/300/450`;
-            }}
+          <LazyImage
+            src={poster}
+            alt={movie.title}
+            className="card-poster-img"
+            placeholder={`https://via.placeholder.com/300x450/1a1a1a/666?text=${encodeURIComponent(movie.title?.substring(0, 20) || 'Movie')}`}
           />
         ) : (
-          <div className="no-poster">Không có poster</div>
+          <div className="card-no-poster">🎬</div>
         )}
-        <div className="movie-overlay">
-          <div className="overlay-content">
-            <h3 className="movie-title">{movie.title}</h3>
-            <div className="movie-meta">
-              <span className="year">{movie.year}</span>
-              <span className="rating">⭐ {movie.vote_average || 'N/A'}</span>
-              <span className="comments">💬 {commentCounts && (commentCounts[movie.id] || 0)}</span>
-            </div>
-            <div className="movie-actions">
-              <button className="btn-play" onClick={(e) => { e.stopPropagation(); onClick && onClick(movie); }}>
-                ▶ Xem phim
-              </button>
+        
+        {/* Rating Badge - top right */}
+        {rating > 0 && (
+          <div className="card-rating" style={{ backgroundColor: ratingColor }}>
+            <span className="rating-star">⭐</span>
+            <span className="rating-text">{rating.toFixed(1)}</span>
+          </div>
+        )}
+        
+        {/* Bottom info bar - always visible */}
+        <div className="card-info-bar">
+          <div className="card-info-content">
+            <h3 className="card-movie-title">{movie.title}</h3>
+            <div className="card-movie-meta">
+              {movie.year && <span className="card-year">📅 {movie.year}</span>}
+              {commentCounts && commentCounts[movie.id] > 0 && (
+                <span className="card-comments">💬 {commentCounts[movie.id]}</span>
+              )}
             </div>
           </div>
+        </div>
+        
+        {/* Hover overlay with play button */}
+        <div className="card-play-overlay">
+          <button className="card-play-btn" onClick={(e) => { e.stopPropagation(); onClick && onClick(movie); }}>
+            <span className="play-btn-icon">▶</span>
+            <span className="play-btn-text">XEM NGAY</span>
+          </button>
         </div>
       </div>
     </div>
@@ -51,6 +65,7 @@ export default function HomePage({ onMovieClick }) {
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [heroMovies, setHeroMovies] = useState([]);
   const [watchHistory, setWatchHistory] = useState([]);
+  const [watchlist, setWatchlist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingSections, setLoadingSections] = useState({
     trending: true,
@@ -240,6 +255,9 @@ export default function HomePage({ onMovieClick }) {
     const fetchMovies = async () => {
       const storedUser = localStorage.getItem('user');
       const userId = storedUser ? JSON.parse(storedUser)?.userId : null;
+      // Use recType-specific cache key to ensure personalization
+      const recType = userId ? 'personalized' : 'collaborative';
+      const cacheKey = `cached_recs_${recType}_${userId || 'public'}`;
       
       // INSTANT DISPLAY: Load from cache FIRST, show immediately
       try {
@@ -270,7 +288,6 @@ export default function HomePage({ onMovieClick }) {
         }
         
         // Load featured from cache instantly
-        const cacheKey = `cached_recs_collaborative_${userId || 'public'}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
           try {
@@ -330,7 +347,9 @@ export default function HomePage({ onMovieClick }) {
 
         // Fetch featured recommendations (in background, async, don't wait)
         setLoadingSections(prev => ({ ...prev, featured: true, topRated: true }));
-        fetch(`${API_BASE}/recommendations?rec_type=collaborative&n=50`)
+        // Use personalized recommendations if user is logged in, otherwise collaborative
+        const userParam = userId ? `&user_id=${encodeURIComponent(userId)}` : '';
+        fetch(`${API_BASE}/recommendations?rec_type=${recType}&n=50${userParam}`)
           .then(recResp => {
             if (recResp.ok) {
               return recResp.json();
@@ -375,25 +394,31 @@ export default function HomePage({ onMovieClick }) {
       }
 
       // PRIORITY 2: Background fetches (don't block UI)
-      // Fetch user data
+      // Fetch user data from PostgreSQL
       if (userId) {
         try {
           const [historyRes, watchlistRes] = await Promise.all([
-            fetch(`${API_BASE}/watch-history/${userId}`),
-            fetch(`${API_BASE}/watchlist/${userId}`)
+            fetch(`${API_BASE}/user/${userId}/watched`),
+            fetch(`${API_BASE}/user/${userId}/watchlist`)
           ]);
           
           if (historyRes.ok) {
             const data = await historyRes.json();
-            const history = data.movies || data.history || [];
+            const history = data.movies || [];
             
             // Deduplicate by movieId - keep only most recent entry for each movie
             const uniqueHistory = [];
             const seenMovieIds = new Set();
-            history.forEach(entry => {
-              if (!seenMovieIds.has(entry.movieId)) {
-                seenMovieIds.add(entry.movieId);
-                uniqueHistory.push(entry);
+            history.forEach(movie => {
+              const movieId = movie.id || movie.movie_id;
+              if (!seenMovieIds.has(movieId)) {
+                seenMovieIds.add(movieId);
+                uniqueHistory.push({
+                  movieId: movieId,
+                  watchedAt: movie.watched_at,
+                  progress: movie.progress,
+                  ...movie
+                });
               }
             });
             
@@ -401,7 +426,7 @@ export default function HomePage({ onMovieClick }) {
           }
           if (watchlistRes.ok) {
             const data = await watchlistRes.json();
-            const watchlistData = data.movies || data.watchlist || [];
+            const watchlistData = data.movies || [];
             setWatchlist(watchlistData);
             
             // Save to cache for next time

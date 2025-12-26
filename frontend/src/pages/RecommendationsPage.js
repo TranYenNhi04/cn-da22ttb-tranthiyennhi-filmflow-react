@@ -471,35 +471,39 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
             const userId = user?.userId || 'Anonymous';
             
             const isInWatchlist = watchlist[currentMovie.id];
-            const action = isInWatchlist ? 'remove_from_watchlist' : 'add_to_watchlist';
             
-            await fetch(`${API_BASE}/watchlist`, {
+            // Use new PostgreSQL API endpoint
+            const response = await fetch(`${API_BASE}/user/${userId}/watchlist/toggle?movie_id=${currentMovie.id}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    userId: userId, 
-                    movieId: currentMovie.id, 
-                    action: action 
-                })
+                headers: { 'Content-Type': 'application/json' }
             });
             
-            setWatchlist(prev => ({ ...prev, [currentMovie.id]: !isInWatchlist }));
-            
-            // Update localStorage cache
-            try {
-                const cacheKey = `watchlist_${userId}`;
-                const cached = localStorage.getItem(cacheKey);
-                let watchlistData = cached ? JSON.parse(cached) : [];
+            if (response.ok) {
+                const result = await response.json();
+                const nowInWatchlist = result.in_watchlist;
                 
-                if (isInWatchlist) {
-                    watchlistData = watchlistData.filter(m => m.id !== currentMovie.id);
-                } else {
-                    watchlistData.push(currentMovie);
+                setWatchlist(prev => ({ ...prev, [currentMovie.id]: nowInWatchlist }));
+                
+                // Update localStorage cache
+                try {
+                    const cacheKey = `watchlist_${userId}`;
+                    const cached = localStorage.getItem(cacheKey);
+                    let watchlistData = cached ? JSON.parse(cached) : [];
+                    
+                    if (result.action === 'removed') {
+                        watchlistData = watchlistData.filter(m => m.id !== currentMovie.id);
+                    } else {
+                        // Add movie if not already in list
+                        const exists = watchlistData.some(m => m.id === currentMovie.id);
+                        if (!exists) {
+                            watchlistData.push(currentMovie);
+                        }
+                    }
+                    
+                    localStorage.setItem(cacheKey, JSON.stringify(watchlistData));
+                } catch (e) {
+                    console.warn('Failed to update watchlist cache:', e);
                 }
-                
-                localStorage.setItem(cacheKey, JSON.stringify(watchlistData));
-            } catch (e) {
-                console.warn('Failed to update watchlist cache:', e);
             }
         } catch (err) {
             console.error('Failed to update watchlist:', err);
