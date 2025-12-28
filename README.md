@@ -11,7 +11,7 @@
 
 **Nền tảng xem phim với AI gợi ý cá nhân hóa, giao diện đẹp mắt và trải nghiệm người dùng tuyệt vời**
 
-[Tính Năng](#-tính-năng-nổi-bật) • [Cài Đặt](#-cài-đặt) • [Cải Thiện Mới](#-các-cải-thiện-mới) • [API](#-api-documentation) • [Công Nghệ](#-công-nghệ-sử-dụng)
+[Tính Năng](#-tính-năng-nổi-bật) • [Cài Đặt](#-cài-đặt) • [API](#-api-documentation) • [Công Nghệ](#-công-nghệ-sử-dụng)
 
 </div>
 
@@ -20,7 +20,6 @@
 ## 📋 Mục Lục
 
 - [Giới Thiệu](#-giới-thiệu)
-- [Các Cải Thiện Mới](#-các-cải-thiện-mới)
 - [Tính Năng Nổi Bật](#-tính-năng-nổi-bật)
 - [Demo & Screenshots](#-demo--screenshots)
 - [Công Nghệ Sử Dụng](#-công-nghệ-sử-dụng)
