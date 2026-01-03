@@ -177,11 +177,6 @@ class CollaborativeModel:
             else:
                 pred_rating = movie_ratings.mean()
             predictions.append((movie_id, pred_rating))
-            if similarity_sum > 0:
-                pred_rating = np.sum(user_similarities * movie_ratings) / similarity_sum
-            else:
-                pred_rating = movie_ratings.mean()
-            predictions.append((movie_id, pred_rating))
         
         # Sắp xếp và lấy top N phim
         predictions.sort(key=lambda x: x[1], reverse=True)

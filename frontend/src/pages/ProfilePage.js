@@ -1,8 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import './ProfilePage.css';
 import { API_BASE } from '../config';
+import LazyImage from '../components/LazyImage';
 
-export default function ProfilePage() {
+// Helper function to get poster URL with fallbacks
+const getPosterUrl = (movie) => {
+  // Priority 1: Direct poster_url
+  if (movie.poster_url && movie.poster_url.startsWith('http')) {
+    return movie.poster_url;
+  }
+  
+  // Priority 2: poster_path (TMDB format)
+  if (movie.poster_path) {
+    if (movie.poster_path.startsWith('/')) {
+      return `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
+    }
+    if (movie.poster_path.startsWith('http')) {
+      return movie.poster_path;
+    }
+  }
+  
+  // Priority 3: Generate placeholder based on movie ID or title
+  const seed = movie.id || movie.movieId || movie.title || 'movie';
+  const seedStr = String(seed).toLowerCase().replace(/\s+/g, '').substring(0, 20);
+  return `https://via.placeholder.com/300x450/1a1a1a/666?text=${encodeURIComponent(movie.title?.substring(0, 20) || 'Movie')}`;
+};
+
+export default function ProfilePage({ onMovieClick }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [preferences, setPreferences] = useState({});
@@ -351,25 +375,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Stats Section */}
-        <div className="stats-section">
-          <h2>📊 Thống Kê</h2>
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-value">{profile?.totalRatings || 0}</div>
-              <div className="stat-label">Đánh Giá</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{profile?.totalWatchlist || 0}</div>
-              <div className="stat-label">Phim Đã Lưu</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{profile?.favoriteGenres?.length || 0}</div>
-              <div className="stat-label">Thể Loại Yêu Thích</div>
-            </div>
-          </div>
-        </div>
-
         {/* Watch History */}
         {watchHistory?.length > 0 && (
           <div className="activity-section">
@@ -378,21 +383,38 @@ export default function ProfilePage() {
               {watchHistory.slice(0, showAllHistory ? watchHistory.length : 5).map((entry) => {
                 const movie = movieData[entry.movieId];
                 if (!movie) return null;
+                
+                const posterUrl = getPosterUrl(movie);
+                const watchDate = entry.watched_at || entry.viewed_at || entry.timestamp;
+                
                 return (
-                  <div key={entry.movieId} className="movie-poster-card">
+                  <div 
+                    key={entry.movieId} 
+                    className="movie-poster-card"
+                    onClick={() => onMovieClick && onMovieClick(movie)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="movie-poster-wrapper">
-                      {movie.poster_url ? (
-                        <img src={movie.poster_url} alt={movie.title} className="movie-poster" />
-                      ) : (
-                        <div className="no-poster">Không có poster</div>
+                      <LazyImage
+                        src={posterUrl}
+                        alt={movie.title}
+                        className="movie-poster"
+                        placeholder={`https://via.placeholder.com/300x450/1a1a1a/666?text=${encodeURIComponent(movie.title?.substring(0, 15) || 'Loading')}`}
+                      />
+                      {entry.progress > 0 && (
+                        <div className="progress-bar-overlay">
+                          <div className="progress-bar-fill" style={{ width: `${Math.min(entry.progress, 100)}%` }}></div>
+                        </div>
                       )}
                     </div>
                     <div className="movie-poster-info">
                       <h4 className="movie-poster-title">{movie.title}</h4>
-                      <p className="movie-poster-meta">⭐ {movie.vote_average || 'N/A'}</p>
-                      <p className="movie-watch-date">
-                        {new Date(entry.viewed_at || entry.timestamp).toLocaleDateString('vi-VN')}
-                      </p>
+                      <p className="movie-poster-meta">⭐ {movie.vote_average ? Number(movie.vote_average).toFixed(1) : 'N/A'}</p>
+                      {watchDate && (
+                        <p className="movie-watch-date">
+                          {new Date(watchDate).toLocaleDateString('vi-VN')}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -416,27 +438,53 @@ export default function ProfilePage() {
           <div className="activity-section">
             <h2>❤️ Danh Sách Đã Lưu ({watchlist.length})</h2>
             <div className="movies-grid">
-              {watchlist.slice(0, showAllWatchlist ? watchlist.length : 5).map((movie) => (
-                <div key={movie.id} className="movie-poster-card">
-                  <div className="movie-poster-wrapper">
-                    {movie.poster_url ? (
-                      <img src={movie.poster_url} alt={movie.title} className="movie-poster" />
-                    ) : (
-                      <div className="no-poster">Không có poster</div>
-                    )}
-                  </div>
-                  <div className="movie-poster-info">
-                    <h4 className="movie-poster-title">{movie.title}</h4>
-                    <p className="movie-poster-meta">⭐ {movie.vote_average || 'N/A'}</p>
-                    <button 
-                      className="remove-btn"
-                      onClick={() => removeFromWatchlist(movie.id)}
+              {watchlist.slice(0, showAllWatchlist ? watchlist.length : 5).map((movie) => {
+                const posterUrl = getPosterUrl(movie);
+                
+                return (
+                  <div key={movie.id} className="movie-poster-card">
+                    <div 
+                      className="movie-poster-wrapper"
+                      onClick={() => onMovieClick && onMovieClick(movie)}
+                      style={{ cursor: 'pointer' }}
                     >
-                      🗑️ Xóa
-                    </button>
+                      <LazyImage
+                        src={posterUrl}
+                        alt={movie.title}
+                        className="movie-poster"
+                        placeholder={`https://via.placeholder.com/300x450/1a1a1a/666?text=${encodeURIComponent(movie.title?.substring(0, 15) || 'Loading')}`}
+                      />
+                      <div className="poster-overlay">
+                        <button 
+                          className="play-movie-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMovieClick && onMovieClick(movie);
+                          }}
+                          title="Xem phim"
+                        >
+                          ▶️
+                        </button>
+                        <button 
+                          className="remove-from-watchlist-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromWatchlist(movie.id);
+                          }}
+                          title="Xóa khỏi danh sách"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                    <div className="movie-poster-info">
+                      <h4 className="movie-poster-title">{movie.title}</h4>
+                      <p className="movie-poster-meta">⭐ {movie.vote_average ? Number(movie.vote_average).toFixed(1) : 'N/A'}</p>
+                      {movie.year && <p className="movie-year">📅 {movie.year}</p>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {watchlist.length > 5 && (
               <div className="show-more-container">

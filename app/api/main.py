@@ -123,33 +123,38 @@ def enrich_movies_parallel(movies):
     def enrich_movie(movie):
         """Enrich a single movie with poster and placeholder"""
         # Priority 1: Use existing poster_url from movie data
-        if movie.get("poster_url"):
+        if movie.get("poster_url") and movie["poster_url"].startswith("http"):
             return movie
         
-        # Priority 2: Build TMDB poster URL from movie ID (faster than API call)
-        movie_id = movie.get('id') or movie.get('movieId')
-        if movie_id:
-            # Try to get poster_path from TMDB using movie ID
-            # This would require a TMDB lookup, but we can construct a likely URL
-            # For Harry Potter movies, use proper TMDB poster paths
-            movie_id = int(movie_id) if isinstance(movie_id, (str, int)) else None
-            if movie_id:
-                # Common TMDB poster pattern - we'd need to fetch this properly
-                # For now, try to use title-based lookup if TMDB is available
-                title = movie.get('title', '')
-                year = movie.get('year')
-                
-                if TMDB_AVAILABLE and title:
-                    try:
-                        tmdb_data = get_movie_data(title, year)
-                        if tmdb_data and tmdb_data.get('poster_url'):
-                            movie['poster_url'] = tmdb_data['poster_url']
-                            return movie
-                    except Exception:
-                        pass
+        # Priority 2: Check for poster_path field (TMDB format)
+        if movie.get("poster_path"):
+            poster_path = movie["poster_path"]
+            if poster_path.startswith("/"):
+                movie["poster_url"] = f"https://image.tmdb.org/t/p/w500{poster_path}"
+                return movie
+            elif poster_path.startswith("http"):
+                movie["poster_url"] = poster_path
+                return movie
         
-        # Priority 3: Use generic placeholder as last resort
-        seed = movie.get('id') or movie.get('title', 'movie')
+        # Priority 3: Try TMDB API if available and we have a title
+        title = movie.get('title', '')
+        year = movie.get('year')
+        
+        if TMDB_AVAILABLE and title:
+            try:
+                tmdb_data = get_movie_data(title, year)
+                if tmdb_data and tmdb_data.get('poster_url'):
+                    movie['poster_url'] = tmdb_data['poster_url']
+                    # Also save video URL if available
+                    if tmdb_data.get('video_url'):
+                        movie['video_url'] = tmdb_data['video_url']
+                    return movie
+            except Exception as e:
+                # Silently fail and use placeholder
+                pass
+        
+        # Priority 4: Use generic placeholder as last resort
+        seed = movie.get('id') or movie.get('movieId') or movie.get('title', 'movie')
         t = str(seed).lower().replace(' ', '')
         movie["poster_url"] = f"https://picsum.photos/seed/{t[:20] or 'movie'}/300/450"
         
@@ -196,6 +201,11 @@ class InteractionRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    name: str
     email: str
     password: str
 
@@ -280,7 +290,11 @@ def autocomplete_movies(q: str, n: int = 10):
 def get_trending_movies(limit: int = 20):
     """Lấy phim trending với full movie data để tránh nhiều API calls."""
     try:
-        trend_data = movie_controller.movie_model.get_trending_movies(limit=limit)
+        trend_data = movie_controller.movie_model.get_trending_movies(limit=limit * 2)  # Fetch more to account for deduplication
+        
+        # Deduplication by movie ID
+        seen_ids = set()
+        unique_movies = []
         
         # Normalize field names and ensure all movies have required fields
         for movie in trend_data:
@@ -290,6 +304,12 @@ def get_trending_movies(limit: int = 20):
             elif 'id' not in movie and 'movieId' not in movie:
                 # Try to get from other fields as fallback
                 continue
+            
+            # Check for duplicates
+            movie_id = movie.get('id')
+            if movie_id in seen_ids:
+                continue
+            seen_ids.add(movie_id)
                 
             # Ensure poster_url
             if not movie.get('poster_url') and not movie.get('poster_path'):
@@ -297,8 +317,12 @@ def get_trending_movies(limit: int = 20):
                 seed = movie.get('id') or movie.get('movieId') or movie.get('title', '')
                 t = (str(seed) or '').lower().replace(' ', '')
                 movie['poster_url'] = f"https://picsum.photos/seed/{t[:20] or 'movie'}/300/450"
+            
+            unique_movies.append(movie)
+            if len(unique_movies) >= limit:
+                break
         
-        return {"movies": trend_data}
+        return {"movies": unique_movies}
     except Exception as e:
         return {"movies": []}
 
@@ -307,10 +331,24 @@ def get_trending_movies(limit: int = 20):
 def get_new_releases(limit: int = 20):
     """Lấy phim mới nhất - Vieon style."""
     try:
-        movies = movie_controller.movie_model.get_new_releases(limit=limit)
+        movies = movie_controller.movie_model.get_new_releases(limit=limit * 2)  # Fetch more to account for deduplication
+        
+        # Deduplication by movie ID
+        seen_ids = set()
+        unique_movies = []
         
         # Ensure all movies have poster_url
         for movie in movies:
+            # Check for duplicates
+            movie_id = movie.get('id') or movie.get('movieId')
+            if not movie_id or movie_id in seen_ids:
+                continue
+            seen_ids.add(movie_id)
+            
+            # Ensure id field
+            if 'id' not in movie and 'movieId' in movie:
+                movie['id'] = movie['movieId']
+            
             if not movie.get('poster_url'):
                 title = movie.get('title', '')
                 year = movie.get('year')
@@ -323,8 +361,12 @@ def get_new_releases(limit: int = 20):
                 seed = movie.get('id') or movie.get('title','')
                 t = (str(seed) or '').lower().replace(' ', '')
                 movie['poster_url'] = f"https://picsum.photos/seed/{t[:20] or 'movie'}/300/450"
+            
+            unique_movies.append(movie)
+            if len(unique_movies) >= limit:
+                break
         
-        return {"movies": movies}
+        return {"movies": unique_movies}
     except Exception as e:
         return {"movies": []}
 
@@ -474,7 +516,16 @@ def get_recommendations(
         # OPTIMIZED: Parallel poster enrichment
         enriched = enrich_movies_parallel(data[:n])
         
-        result = {"type": rec_type, "results": enriched}
+        # DEDUPLICATION: Remove any duplicate movies by ID
+        seen_ids = set()
+        unique_movies = []
+        for movie in enriched:
+            movie_id = movie.get('id') or movie.get('movieId')
+            if movie_id and movie_id not in seen_ids:
+                seen_ids.add(movie_id)
+                unique_movies.append(movie)
+        
+        result = {"type": rec_type, "results": unique_movies}
         
         # Cache the result for 5 minutes
         recommendation_cache[cache_key] = {
@@ -483,7 +534,7 @@ def get_recommendations(
         }
         
         elapsed = (time.time() - start_time) * 1000
-        print(f"✓ Recommendations generated in {elapsed:.0f}ms (type={rec_type}, count={len(enriched)})")
+        print(f"✓ Recommendations generated in {elapsed:.0f}ms (type={rec_type}, count={len(unique_movies)})")
         
         return result
     except HTTPException:
@@ -528,19 +579,87 @@ def create_user(request: UserRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/auth/login")
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Simple login: find user by email; password ignored (mock auth)"""
+@app.post("/auth/register")
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    """Register a new user with email and password"""
     try:
         from app.data.models import User as UserModel
-        user = db.query(UserModel).filter(UserModel.email == request.email).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        from app.utils.auth import hash_password, generate_user_id
+        
+        # Check if email already exists
+        existing_user = db.query(UserModel).filter(UserModel.email == request.email).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email đã được đăng ký")
+        
+        # Create new user with hashed password
+        user_id = generate_user_id()
+        password_hash = hash_password(request.password)
+        
+        new_user = UserModel(
+            user_id=user_id,
+            name=request.name,
+            email=request.email,
+            password_hash=password_hash
+        )
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        # Also register with movie controller for compatibility
+        try:
+            metadata = f'{{"email":"{request.email}","name":"{request.name}"}}'
+            movie_controller.add_user(user_id, metadata)
+        except:
+            pass
+        
         return {
             "status": "ok",
+            "message": "Đăng ký thành công",
+            "user": {
+                "id": new_user.user_id,
+                "email": new_user.email,
+                "name": new_user.name,
+                "created_at": new_user.created_at.isoformat() if new_user.created_at else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi đăng ký: {str(e)}")
+
+
+@app.post("/auth/login")
+def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """Login with email and password verification"""
+    try:
+        from app.data.models import User as UserModel
+        from app.utils.auth import verify_password
+        
+        # Find user by email
+        user = db.query(UserModel).filter(UserModel.email == request.email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Email chưa được đăng ký")
+        
+        # Check if user has a password (old users might not have)
+        if not user.password_hash:
+            raise HTTPException(
+                status_code=400, 
+                detail="Tài khoản chưa có mật khẩu. Vui lòng đăng ký lại."
+            )
+        
+        # Verify password
+        if not verify_password(request.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Mật khẩu không chính xác")
+        
+        return {
+            "status": "ok",
+            "message": "Đăng nhập thành công",
             "user": {
                 "id": user.user_id,
                 "email": user.email,
+                "name": user.name,
                 "metadata": f'{{"email":"{user.email}","name":"{user.name}"}}',
                 "created_at": user.created_at.isoformat() if user.created_at else None
             }
@@ -548,7 +667,8 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Lỗi đăng nhập: {str(e)}")
+
 
 
 @app.post("/items")
@@ -800,34 +920,40 @@ def get_user_profile(user_id: str):
 
 
 @app.post("/user/{user_id}/preferences")
-def update_user_preferences(user_id: str, request: dict):
+def update_user_preferences(user_id: str, request: dict, db: Session = Depends(get_db)):
     """Lưu user preferences: favorite genres, quality, language."""
     try:
-        try:
-            from app.data import db_postgresql, database
-        except Exception:
-            from data import db_postgresql, database
+        # Get or create user
+        user = get_or_create_user(db, user_id)
         
+        # Store preferences in user metadata as JSON
         import json
-        prefs = json.dumps(request)
-        _db.update_user_metadata(user_id, prefs, data_dir=DATA_DIR)
+        user.metadata = json.dumps(request)
+        db.commit()
         
         return {"status": "ok", "user_id": user_id, "preferences": request}
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/user/{user_id}/preferences")
-def get_user_preferences(user_id: str):
+def get_user_preferences(user_id: str, db: Session = Depends(get_db)):
     """Lấy user preferences."""
     try:
-        try:
-            from app.data import db_postgresql, database
-        except Exception:
-            from data import db_postgresql, database
+        # Get user
+        user = get_or_create_user(db, user_id)
         
-        prefs = _db.get_user_metadata(user_id, data_dir=DATA_DIR)
-        return {"user_id": user_id, "preferences": prefs}
+        # Parse metadata JSON
+        if user.metadata:
+            import json
+            try:
+                prefs = json.loads(user.metadata)
+                return {"user_id": user_id, "preferences": prefs}
+            except:
+                pass
+        
+        return {"user_id": user_id, "preferences": {}}
     except Exception as e:
         return {"user_id": user_id, "preferences": {}}
 
@@ -1252,7 +1378,7 @@ def get_user_watched_movies(user_id: str, db: Session = Depends(get_db)):
             for movie in movies:
                 if not movie.get('poster_url') or 'picsum' in movie.get('poster_url', ''):
                     try:
-                        tmdb_poster = get_movie_poster(movie['title'], movie.get('year'))
+                        tmdb_poster = get_movie_poster(movie['title'])
                         if tmdb_poster:
                             movie['poster_url'] = tmdb_poster
                     except Exception:

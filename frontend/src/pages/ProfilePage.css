@@ -447,7 +447,7 @@
   overflow: hidden;
   transition: all 0.3s ease;
   border: 2px solid transparent;
-  cursor: pointer;
+  position: relative;
 }
 
 .movie-poster-card:hover {
@@ -462,6 +462,87 @@
   position: relative;
   overflow: hidden;
   background: #000;
+}
+
+.poster-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.movie-poster-card:hover .poster-overlay {
+  opacity: 1;
+}
+
+.play-movie-btn {
+  padding: 16px 32px;
+  background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+  border: 2px solid #ffc107;
+  color: #000;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.play-movie-btn:hover {
+  background: linear-gradient(135deg, #ffcd38 0%, #ffa726 100%);
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(255, 193, 7, 0.6);
+}
+
+.remove-from-watchlist-btn {
+  padding: 16px 24px;
+  background: rgba(255, 82, 82, 0.9);
+  border: 2px solid #ff5252;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.3rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3);
+}
+
+.remove-from-watchlist-btn:hover {
+  background: #ff5252;
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(255, 82, 82, 0.5);
+}
+
+.progress-bar-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffc107 0%, #ff9800 100%);
+  transition: width 0.3s ease;
+}
+
+.movie-year {
+  font-size: 0.85rem;
+  color: #999;
+  margin: 0;
 }
 
 .movie-poster {

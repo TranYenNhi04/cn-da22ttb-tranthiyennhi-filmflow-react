@@ -154,7 +154,7 @@ export default function App() {
         {currentPage === 'home' && <HomePage onMovieClick={handleMovieClick} />}
         {currentPage === 'recommendations' && <RecommendationsPage onBack={goBack} />}
         {currentPage === 'collections' && <CollectionsPage onMovieClick={handleMovieClick} />}
-        {currentPage === 'profile' && <ProfilePage />}
+        {currentPage === 'profile' && <ProfilePage onMovieClick={handleMovieClick} />}
         {currentPage === 'watch' && <RecommendationsPage onBack={goBack} initialMovie={selectedMovie} />}
       </main>
     </div>

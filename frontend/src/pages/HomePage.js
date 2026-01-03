@@ -349,7 +349,7 @@ export default function HomePage({ onMovieClick }) {
         setLoadingSections(prev => ({ ...prev, featured: true, topRated: true }));
         // Use personalized recommendations if user is logged in, otherwise collaborative
         const userParam = userId ? `&user_id=${encodeURIComponent(userId)}` : '';
-        fetch(`${API_BASE}/recommendations?rec_type=${recType}&n=50${userParam}`)
+        fetch(`${API_BASE}/recommendations?rec_type=${recType}&n=100${userParam}`)
           .then(recResp => {
             if (recResp.ok) {
               return recResp.json();
@@ -361,19 +361,37 @@ export default function HomePage({ onMovieClick }) {
             if (data) {
               const movies = data.results || [];
               
-              // Filter out movies that are already in trending to avoid duplicates
-              const trendingIds = new Set(trendingMovies.map(m => m.id));
-              const uniqueMovies = movies.filter(m => !trendingIds.has(m.id));
+              // Create global set of already displayed movie IDs from trending
+              const displayedIds = new Set(trendingMovies.map(m => m.id));
               
-              // Split into sections ensuring no overlap
-              const featured = uniqueMovies.filter(m => m.vote_average >= 7).slice(0, 6);
-              const featuredIds = new Set(featured.map(m => m.id));
+              // Filter out movies that are already displayed
+              const uniqueMovies = movies.filter(m => !displayedIds.has(m.id));
               
-              // Top rated - exclude trending and featured
-              const topRated = [...uniqueMovies]
-                .filter(m => !featuredIds.has(m.id))
-                .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
-                .slice(0, 12);
+              // Split into sections ensuring no overlap between any sections
+              const featured = [];
+              const topRated = [];
+              
+              // First pass: get featured movies (high rated, not in trending)
+              for (const movie of uniqueMovies) {
+                if (featured.length >= 6) break;
+                if (movie.vote_average >= 7 && !displayedIds.has(movie.id)) {
+                  featured.push(movie);
+                  displayedIds.add(movie.id); // Mark as displayed
+                }
+              }
+              
+              // Second pass: get top rated movies (exclude already displayed)
+              const sortedByRating = [...uniqueMovies]
+                .filter(m => !displayedIds.has(m.id))
+                .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+              
+              for (const movie of sortedByRating) {
+                if (topRated.length >= 12) break;
+                if (!displayedIds.has(movie.id)) {
+                  topRated.push(movie);
+                  displayedIds.add(movie.id); // Mark as displayed
+                }
+              }
               
               setFeaturedMovies(featured);
               setAllMovies(uniqueMovies.slice(0, 12));
@@ -442,21 +460,31 @@ export default function HomePage({ onMovieClick }) {
       }
 
       // Fetch new releases in background
-      fetch(`${API_BASE}/movies/new-releases?limit=30`)
+      fetch(`${API_BASE}/movies/new-releases?limit=50`)
         .then(newRes => newRes.ok ? newRes.json() : null)
         .then(data => {
           if (data) {
             const movies = data.movies || [];
-            setNewMovies(movies);
+            
+            // Remove duplicates from new releases - exclude movies already in other sections
+            const displayedIds = new Set([
+              ...trendingMovies.map(m => m.id),
+              ...featuredMovies.map(m => m.id),
+              ...topRatedMovies.map(m => m.id)
+            ]);
+            
+            const uniqueNewMovies = movies.filter(m => !displayedIds.has(m.id)).slice(0, 12);
+            
+            setNewMovies(uniqueNewMovies);
             setLoadingSections(prev => ({ ...prev, new: false }));
             
             // Cache for instant display next time
             try {
-              localStorage.setItem('cached_new_releases', JSON.stringify({ movies, ts: Date.now() }));
+              localStorage.setItem('cached_new_releases', JSON.stringify({ movies: uniqueNewMovies, ts: Date.now() }));
             } catch (e) {}
             
-            if (movies.length > 0) {
-              fetchCommentCounts(movies);
+            if (uniqueNewMovies.length > 0) {
+              fetchCommentCounts(uniqueNewMovies);
             }
           }
         })
@@ -582,9 +610,9 @@ export default function HomePage({ onMovieClick }) {
           </div>
           {searchResults.length > 0 ? (
             <div className="movie-grid">
-              {searchResults.map((movie, idx) => (
+              {searchResults.map((movie) => (
                 <MovieCard 
-                  key={idx} 
+                  key={`search-${movie.id}`}
                   movie={movie} 
                   commentCounts={commentCounts} 
                   onClick={onMovieClick}
@@ -633,9 +661,9 @@ export default function HomePage({ onMovieClick }) {
             const filtered = filterMovies(trendingMovies).slice(0, 12);
             return filtered.length > 0 ? (
               <div className="movie-grid">
-                {filtered.map((movie, idx) => (
+                {filtered.map((movie) => (
                   <MovieCard 
-                    key={idx} 
+                    key={`trending-${movie.id}`}
                     movie={movie} 
                     commentCounts={commentCounts} 
                     onClick={onMovieClick}
@@ -663,9 +691,9 @@ export default function HomePage({ onMovieClick }) {
             const filtered = filterMovies(featuredMovies);
             return filtered.length > 0 ? (
               <div className="movie-grid">
-                {filtered.map((movie, idx) => (
+                {filtered.map((movie) => (
                   <MovieCard 
-                    key={idx} 
+                    key={`featured-${movie.id}`}
                     movie={movie} 
                     commentCounts={commentCounts} 
                     onClick={onMovieClick}
@@ -693,9 +721,9 @@ export default function HomePage({ onMovieClick }) {
             const filtered = filterMovies(newMovies).slice(0, 12);
             return filtered.length > 0 ? (
               <div className="movie-grid">
-                {filtered.map((movie, idx) => (
+                {filtered.map((movie) => (
                   <MovieCard 
-                    key={idx} 
+                    key={`new-${movie.id}`}
                     movie={movie} 
                     commentCounts={commentCounts} 
                     onClick={onMovieClick}
@@ -723,9 +751,9 @@ export default function HomePage({ onMovieClick }) {
             const filtered = filterMovies(topRatedMovies).slice(0, 12);
             return filtered.length > 0 ? (
               <div className="movie-grid">
-                {filtered.map((movie, idx) => (
+                {filtered.map((movie) => (
                   <MovieCard 
-                    key={idx} 
+                    key={`toprated-${movie.id}`}
                     movie={movie} 
                     commentCounts={commentCounts} 
                     onClick={onMovieClick}

@@ -13,6 +13,7 @@ class User(Base):
     user_id = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255))
     email = Column(String(255), unique=True, index=True)
+    password_hash = Column(String(255), nullable=True)  # Hashed password for authentication
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

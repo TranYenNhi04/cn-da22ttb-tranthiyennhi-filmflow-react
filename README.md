@@ -4,9 +4,10 @@
 
 ![FilmFlow Banner](https://img.shields.io/badge/FilmFlow-Movie%20Recommendation-ffc107?style=for-the-badge)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![React](https://img.shields.io/badge/React-18+-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-17-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 **Nền tảng xem phim với AI gợi ý cá nhân hóa, giao diện đẹp mắt và trải nghiệm người dùng tuyệt vời**
@@ -139,26 +140,37 @@
 | Technology | Purpose | Version |
 |------------|---------|---------|
 | **Python** | Core Language | 3.11+ |
-| **FastAPI** | REST API Framework | 0.100+ |
-| **Pandas** | Data Processing | Latest |
-| **NumPy** | Numerical Computing | Latest |
-| **Scikit-learn** | ML Algorithms | Latest |
-| **Uvicorn** | ASGI Server | Latest |
+| **FastAPI** | REST API Framework | 0.104+ |
+| **PostgreSQL** | Database | 15 |
+| **SQLAlchemy** | ORM | 2.0+ |
+| **Pandas** | Data Processing | 2.0+ |
+| **NumPy** | Numerical Computing | 1.24+ |
+| **Scikit-learn** | ML Algorithms | 1.3+ |
+| **Uvicorn** | ASGI Server | 0.24+ |
+
+**Database & ORM:**
+- `PostgreSQL` - Production database
+- `SQLAlchemy` - ORM and database toolkit
+- `Alembic` - Database migrations
+- `psycopg2-binary` - PostgreSQL adapter
 
 **ML Libraries:**
 - `scikit-learn` - TF-IDF, Cosine Similarity, SVD
 - `pandas` - Data manipulation
 - `numpy` - Matrix operations
 
-**APIs:**
+**APIs & Security:**
 - `TMDB API` - Movie metadata và posters
 - `YouTube API` - Movie trailers
+- `slowapi` - Rate limiting
+- `python-dotenv` - Environment management
 
 ### Frontend
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| **React** | UI Framework | 18+ |
+| **React** | UI Framework | 17 |
+| **React Scripts** | Build Tools | 4.0.3 |
 | **CSS3** | Styling | - |
 | **JavaScript ES6+** | Logic | - |
 
@@ -177,8 +189,10 @@
 |------------|---------|
 | **Docker** | Containerization |
 | **Docker Compose** | Multi-container orchestration |
+| **PostgreSQL Docker** | Database container |
 | **Git** | Version control |
-| **Nginx** | Frontend serving |
+| **Alembic** | Database migrations |
+| **pytest** | Testing framework |
 
 ---
 
@@ -215,10 +229,13 @@
 │  └──────────────┬───────────────────────────────┘  │
 │                 │                                    │
 │  ┌──────────────▼───────────────────────────────┐  │
-│  │         Data Layer (CSV/In-Memory)           │  │
+│  │         Data Layer                           │  │
+│  │  PostgreSQL Database:                        │  │
+│  │  - Users, Movies, Ratings                    │  │
+│  │  - Reviews, WatchHistory, Watchlist          │  │
+│  │  CSV Files (for ML training):                │  │
 │  │  - movies_processed.csv                      │  │
 │  │  - ratings_processed.csv                     │  │
-│  │  - reviews.csv                               │  │
 │  └──────────────┬───────────────────────────────┘  │
 │                 │                                    │
 │  ┌──────────────▼───────────────────────────────┐  │
@@ -249,11 +266,17 @@ git clone https://github.com/TranYenNhi04/cn-da22ttb-tranthiyennhi-filmflow-reac
 cd cn-da22ttb-tranthiyennhi-filmflow-react
 ```
 
-2. **Tạo file `.env`** (optional)
+2. **Tạo file `.env`** trong thư mục gốc dự án
 ```bash
 # .env
 YOUTUBE_API_KEY=your_youtube_api_key_here
 TMDB_API_KEY=your_tmdb_api_key_here
+
+# Database configuration (có thể dùng mặc định)
+DATABASE_URL=postgresql://filmflow_user:filmflow_pass123@localhost:5432/filmflow
+
+# CORS settings (có thể dùng mặc định)
+CORS_ORIGINS=http://localhost:3000,http://localhost:80
 ```
 
 3. **Chạy Docker Compose**
@@ -265,29 +288,53 @@ docker-compose up --build
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
+- PostgreSQL: localhost:5432 (Database: filmflow)
 
 ### Cách 2: Cài Đặt Thủ Công
+
+#### Yêu cầu:
+- Python 3.11+
+- PostgreSQL 15+
+- Node.js 10.16.0+
+
+#### PostgreSQL Setup
+
+```bash
+# Khởi động PostgreSQL với Docker
+docker-compose up -d postgres
+
+# Hoặc cài đặt PostgreSQL local và tạo database
+psql -U postgres
+CREATE DATABASE filmflow;
+CREATE USER filmflow_user WITH PASSWORD 'filmflow_pass123';
+GRANT ALL PRIVILEGES ON DATABASE filmflow TO filmflow_user;
+```
 
 #### Backend Setup
 
 ```bash
-# Di chuyển vào thư mục backend
-cd app
-
-# Tạo virtual environment
-python -m venv venv
+# Tạo virtual environment ở thư mục gốc
+python -m venv .venv
 
 # Activate virtual environment
-# Windows:
-venv\Scripts\activate
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Windows CMD:
+.venv\Scripts\activate.bat
 # Linux/Mac:
-source venv/bin/activate
+source .venv/bin/activate
 
 # Cài đặt dependencies
-pip install -r api/requirements.txt
+pip install -r app/api/requirements.txt
+
+# Khởi tạo database (tạo tables)
+python app/scripts/init_db.py
 
 # Chạy backend server
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.api.main:app --reload --host 127.0.0.1 --port 8000
+
+# Hoặc sử dụng script có sẵn (Windows)
+.\start_backend.ps1
 ```
 
 #### Frontend Setup
