@@ -1008,11 +1008,11 @@ def get_user_watchlist(user_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/watch-history/{user_id}")
-def get_user_watch_history(user_id: str, db: Session = Depends(get_db)):
+def get_user_watch_history(user_id: str, limit: int = 200, db: Session = Depends(get_db)):
     """DEPRECATED: Use /user/{user_id}/watched instead"""
     try:
         from app.data.db_postgresql import get_watch_history as pg_get_history
-        history = pg_get_history(db, user_id, limit=100)
+        history = pg_get_history(db, user_id, limit=limit)
         movies = [item.movie_id for item in history if item.movie_id]
         return {"user_id": user_id, "movies": movies}
     except Exception as e:
@@ -1354,7 +1354,7 @@ def get_user_watchlist_movies(user_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/user/{user_id}/watched")
-def get_user_watched_movies(user_id: str, db: Session = Depends(get_db)):
+def get_user_watched_movies(user_id: str, limit: int = 200, db: Session = Depends(get_db)):
     """Lấy danh sách phim đã xem"""
     try:
         # Never return watch history for Anonymous users
@@ -1362,7 +1362,7 @@ def get_user_watched_movies(user_id: str, db: Session = Depends(get_db)):
             return {"movies": []}
         
         from app.data.db_postgresql import get_watch_history as pg_get_history
-        history = pg_get_history(db, user_id, limit=50)
+        history = pg_get_history(db, user_id, limit=limit)
         movies = []
         
         for item in history:

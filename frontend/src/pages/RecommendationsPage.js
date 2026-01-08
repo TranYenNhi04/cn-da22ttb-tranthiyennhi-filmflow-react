@@ -20,15 +20,38 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
     const [hoverRating, setHoverRating] = useState(0); // Hover rating for preview
     const [videoProgress, setVideoProgress] = useState({}); // Track video progress {movieId: {timestamp, duration}}
     const [player, setPlayer] = useState(null); // YouTube player instance
+    const [hasUserPlayed, setHasUserPlayed] = useState(false); // Track if user has actually played the video
     const playerRef = React.useRef(null);
     
     const currentMovie = movieHistory.length > 0 ? movieHistory[movieHistory.length - 1] : null;
     const similarMovies = currentMovie ? (similarMoviesCache[currentMovie.id] || []) : [];
 
-    // Load saved video progress from localStorage
+    // Load saved video progress from localStorage (per user)
     useEffect(() => {
         try {
-            const saved = localStorage.getItem('video_progress');
+            const stored = localStorage.getItem('user');
+            const user = stored ? JSON.parse(stored) : null;
+            const userId = user?.userId || 'anonymous';
+            
+            // MIGRATION: Move old shared 'video_progress' to user-specific key (one-time)
+            const oldKey = 'video_progress';
+            const newKey = `video_progress_${userId}`;
+            
+            // Check if old shared key exists and new key doesn't
+            if (localStorage.getItem(oldKey) && !localStorage.getItem(newKey)) {
+                console.log('🔄 Migrating video progress to user-specific storage...');
+                try {
+                    const oldData = localStorage.getItem(oldKey);
+                    localStorage.setItem(newKey, oldData); // Copy to new key
+                    localStorage.removeItem(oldKey); // Remove old shared key
+                    console.log('✅ Migration complete');
+                } catch (e) {
+                    console.warn('Migration failed:', e);
+                }
+            }
+            
+            // Load from user-specific key
+            const saved = localStorage.getItem(newKey);
             if (saved) {
                 setVideoProgress(JSON.parse(saved));
             }
@@ -95,6 +118,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
     useEffect(() => {
         setReviewRating(0);
         setHoverRating(0);
+        setHasUserPlayed(false); // Reset play flag when movie changes
     }, [currentMovie?.id]);
 
     const getYouTubeEmbedUrl = (url) => {
@@ -154,7 +178,12 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
             return;
         }
         
-        // Save to state and localStorage
+        // Get user ID for per-user storage
+        const stored = localStorage.getItem('user');
+        const user = stored ? JSON.parse(stored) : null;
+        const userId = user?.userId || 'anonymous';
+        
+        // Save to state and localStorage (per user)
         const newProgress = {
             ...videoProgress,
             [movieId]: { timestamp: Math.floor(timestamp), duration: Math.floor(duration || 0), savedAt: Date.now() }
@@ -162,7 +191,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         setVideoProgress(newProgress);
         
         try {
-            localStorage.setItem('video_progress', JSON.stringify(newProgress));
+            localStorage.setItem(`video_progress_${userId}`, JSON.stringify(newProgress));
         } catch (e) {
             console.warn('Failed to save progress to localStorage:', e);
         }
@@ -690,7 +719,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
 
     // Auto-save progress every 10 seconds when playing
     useEffect(() => {
-        if (!currentMovie || !player) return;
+        if (!currentMovie || !player || !hasUserPlayed) return; // Only save if user has played
         
         const interval = setInterval(() => {
             try {
@@ -717,17 +746,17 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         }, 10000); // Save every 10 seconds
         
         return () => clearInterval(interval);
-    }, [currentMovie, player]);
+    }, [currentMovie, player, hasUserPlayed]);
 
     // Save progress when user leaves page
     useEffect(() => {
         const handleBeforeUnload = () => {
-            if (currentMovie && player) {
+            if (currentMovie && player && hasUserPlayed) { // Only save if user has played
                 try {
                     // Only save if video is playing and user has watched more than 5 seconds
                     if (typeof player.getPlayerState === 'function') {
                         const state = player.getPlayerState();
-                        // Only save if was playing (1) or paused after playing
+                        // Only save if was playing (1) or paused after playing (2)
                         if (state === 1 || state === 2) {
                             const currentTime = player.getCurrentTime();
                             const duration = player.getDuration();
@@ -742,7 +771,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [currentMovie, player]);
+    }, [currentMovie, player, hasUserPlayed]);
 
     return (
         <div className={styles.mainContent}>
@@ -805,7 +834,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                             allowFullScreen
                                             referrerPolicy="strict-origin-when-cross-origin"
-                                            src={`${embed}${sep}autoplay=1&mute=0&rel=0&modestbranding=1&enablejsapi=1${startParam}`}
+                                            src={`${embed}${sep}autoplay=0&mute=0&rel=0&modestbranding=1&enablejsapi=1${startParam}`}
                                             onLoad={() => {
                                                 // Wait for YouTube IFrame API to be ready before initializing
                                                 const initPlayer = () => {
@@ -817,40 +846,27 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                                                                         console.log('YouTube player ready');
                                                                         setPlayer(event.target);
                                                                         playerRef.current = event.target;
-                                                                        // Seek to saved position if available
+                                                                        // Seek to saved position if available (but don't autoplay)
                                                                         if (startTime > 5) {
                                                                             setTimeout(() => {
                                                                                 try {
                                                                                     event.target.seekTo(startTime, true);
+                                                                                    // Pause after seeking to prevent autoplay
+                                                                                    event.target.pauseVideo();
                                                                                 } catch (e) {
                                                                                     console.warn('Failed to seek:', e);
                                                                                 }
                                                                             }, 1000);
                                                                         }
-                                                                        
-                                                                        // Auto-save progress every 10 seconds
-                                                                        const saveInterval = setInterval(() => {
-                                                                            try {
-                                                                                const player = playerRef.current;
-                                                                                if (player && typeof player.getCurrentTime === 'function' && typeof player.getPlayerState === 'function') {
-                                                                                    // Only save if video is actually playing
-                                                                                    const playerState = player.getPlayerState();
-                                                                                    const currentTime = player.getCurrentTime();
-                                                                                    const duration = player.getDuration();
-                                                                                    // YT.PlayerState.PLAYING = 1
-                                                                                    if (playerState === 1 && currentTime > 5) {
-                                                                                        saveVideoProgress(currentMovie.id, currentTime, duration);
-                                                                                    }
-                                                                                }
-                                                                            } catch (e) {}
-                                                                        }, 10000);
-                                                                        
-                                                                        // Clear interval when player is destroyed
-                                                                        return () => clearInterval(saveInterval);
                                                                     },
                                                                     'onStateChange': (event) => {
-                                                                        // Save when paused (only if watched more than 5 seconds)
-                                                                        if (event.data === window.YT.PlayerState.PAUSED) {
+                                                                        // Track when user actually starts playing
+                                                                        if (event.data === window.YT.PlayerState.PLAYING) {
+                                                                            setHasUserPlayed(true);
+                                                                        }
+                                                                        
+                                                                        // Save when paused (only if watched more than 5 seconds and user has played)
+                                                                        if (event.data === window.YT.PlayerState.PAUSED && hasUserPlayed) {
                                                                             try {
                                                                                 const currentTime = event.target.getCurrentTime();
                                                                                 const duration = event.target.getDuration();

@@ -143,7 +143,7 @@ export default function ProfilePage({ onMovieClick }) {
       
       // Get watch history from new PostgreSQL API
       try {
-        const historyRes = await fetch(`${API_BASE}/user/${userId}/watched`);
+        const historyRes = await fetch(`${API_BASE}/user/${userId}/watched?limit=200`);
         if (historyRes.ok) {
           const historyData = await historyRes.json();
           const movies = historyData.movies || [];
@@ -207,11 +207,41 @@ export default function ProfilePage({ onMovieClick }) {
   const updateQuality = async (quality) => {
     setSelectedQuality(quality);
     localStorage.setItem('video_quality', quality);
+    
+    // Also update backend preferences
+    try {
+      await fetch(`${API_BASE}/user/${user.userId}/preferences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          favorite_genres: preferences.favorite_genres || [],
+          quality: quality,
+          languages: selectedLangs
+        })
+      });
+    } catch (error) {
+      console.error('Failed to update quality:', error);
+    }
   };
 
   const updateLanguages = async (langs) => {
     setSelectedLangs(langs);
     localStorage.setItem('subtitle_languages', JSON.stringify(langs));
+    
+    // Also update backend preferences
+    try {
+      await fetch(`${API_BASE}/user/${user.userId}/preferences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          favorite_genres: preferences.favorite_genres || [],
+          quality: selectedQuality,
+          languages: langs
+        })
+      });
+    } catch (error) {
+      console.error('Failed to update languages:', error);
+    }
   };
 
   const updateGenrePreferences = async (genres) => {

@@ -266,6 +266,20 @@ export default function HomePage({ onMovieClick }) {
       const recType = userId ? 'personalized' : 'collaborative';
       const cacheKey = `cached_recs_${recType}_${userId || 'public'}`;
       
+      // CLEANUP: Remove old shared cache keys if user is logged in (one-time migration)
+      if (userId) {
+        const oldSharedKeys = [
+          'cached_recs_personalized_public',
+          'cached_recs_collaborative_public'
+        ];
+        oldSharedKeys.forEach(key => {
+          if (localStorage.getItem(key)) {
+            console.log(`🗑️ Removing old shared cache: ${key}`);
+            localStorage.removeItem(key);
+          }
+        });
+      }
+      
       // INSTANT DISPLAY: Load from cache FIRST, show immediately
       let hasTrendingCache = false;
       let hasFeaturedCache = false;
@@ -442,7 +456,7 @@ export default function HomePage({ onMovieClick }) {
       if (userId && userId !== 'Anonymous') {
         try {
           const [historyRes, watchlistRes] = await Promise.all([
-            fetch(`${API_BASE}/user/${userId}/watched`),
+            fetch(`${API_BASE}/user/${userId}/watched?limit=100`),
             fetch(`${API_BASE}/user/${userId}/watchlist`)
           ]);
           
@@ -662,10 +676,10 @@ export default function HomePage({ onMovieClick }) {
       {!isSearching && watchHistory.length > 0 && (
         <section className="movie-section">
           <div className="section-header">
-            <h2 className="section-title">📺 Tiếp tục xem</h2>
+            <h2 className="section-title">📺 Tiếp tục xem ({watchHistory.length} phim)</h2>
           </div>
           <div className="movie-grid">
-            {watchHistory.slice(0, 12).map((entry) => {
+            {watchHistory.slice(0, 20).map((entry) => {
               // Use movie data directly from watch history entry
               const movie = {
                 id: entry.movieId || entry.id,
