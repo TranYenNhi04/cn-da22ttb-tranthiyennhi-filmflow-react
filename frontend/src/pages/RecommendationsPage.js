@@ -91,6 +91,12 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         }
     }, [initialMovie]);
 
+    // Reset reviewRating when currentMovie changes
+    useEffect(() => {
+        setReviewRating(0);
+        setHoverRating(0);
+    }, [currentMovie?.id]);
+
     const getYouTubeEmbedUrl = (url) => {
         if (!url) return null;
         

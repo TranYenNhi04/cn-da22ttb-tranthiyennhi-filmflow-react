@@ -1,8 +1,11 @@
 import os
 import requests
+from time import sleep
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
+TIMEOUT = 15  # Increased timeout to 15 seconds
+MAX_RETRIES = 3  # Retry up to 3 times
 
 def get_movie_data(movie_title: str, year: int = None):
     """
@@ -14,7 +17,7 @@ def get_movie_data(movie_title: str, year: int = None):
         return None
 
     try:
-        # Tìm phim
+        # Tìm phim với retry logic
         url = f"{TMDB_BASE_URL}/search/movie"
         params = {
             "api_key": TMDB_API_KEY,
@@ -23,9 +26,26 @@ def get_movie_data(movie_title: str, year: int = None):
         }
         if year:
             params["year"] = year
-            
-        resp = requests.get(url, params=params, timeout=5)
-        data = resp.json()
+        
+        # Retry logic for search
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.get(url, params=params, timeout=TIMEOUT)
+                data = resp.json()
+                break
+            except requests.exceptions.Timeout:
+                if attempt < MAX_RETRIES - 1:
+                    sleep(1)  # Wait 1 second before retry
+                    continue
+                else:
+                    print(f"Timeout fetching data for {movie_title} after {MAX_RETRIES} attempts")
+                    return None
+            except Exception as e:
+                print(f"Error in attempt {attempt + 1} for {movie_title}: {e}")
+                if attempt < MAX_RETRIES - 1:
+                    sleep(1)
+                    continue
+                return None
         
         if not data.get("results"):
             return None
@@ -39,12 +59,30 @@ def get_movie_data(movie_title: str, year: int = None):
         if poster_path:
             result["poster_url"] = f"https://image.tmdb.org/t/p/w500{poster_path}"
         
-        # Lấy videos (trailers)
+        # Lấy videos (trailers) với retry
         if movie_id:
             video_url = f"{TMDB_BASE_URL}/movie/{movie_id}/videos"
             video_params = {"api_key": TMDB_API_KEY}
-            video_resp = requests.get(video_url, params=video_params, timeout=5)
-            video_data = video_resp.json()
+            
+            for attempt in range(MAX_RETRIES):
+                try:
+                    video_resp = requests.get(video_url, params=video_params, timeout=TIMEOUT)
+                    video_data = video_resp.json()
+                    break
+                except requests.exceptions.Timeout:
+                    if attempt < MAX_RETRIES - 1:
+                        sleep(1)
+                        continue
+                    else:
+                        print(f"Timeout fetching videos for {movie_title}")
+                        video_data = {}
+                        break
+                except Exception:
+                    if attempt < MAX_RETRIES - 1:
+                        sleep(1)
+                        continue
+                    video_data = {}
+                    break
             
             videos = video_data.get("results", [])
             # Tìm trailer YouTube
@@ -85,9 +123,28 @@ def get_movie_details(movie_id: int):
             "language": "vi-VN"
         }
         
-        resp = requests.get(url, params=params, timeout=5)
-        if resp.status_code == 200:
-            return resp.json()
+        # Retry logic
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.get(url, params=params, timeout=TIMEOUT)
+                if resp.status_code == 200:
+                    return resp.json()
+                return None
+            except requests.exceptions.Timeout:
+                if attempt < MAX_RETRIES - 1:
+                    sleep(1)
+                    continue
+                else:
+                    print(f"Timeout fetching movie {movie_id} after {MAX_RETRIES} attempts")
+                    return None
+            except Exception as e:
+                if attempt < MAX_RETRIES - 1:
+                    sleep(1)
+                    continue
+                else:
+                    print(f"Error fetching movie {movie_id}: {e}")
+                    return None
+        
         return None
         
     except Exception as e:

@@ -794,15 +794,14 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 Có câu hỏi hoặc cần hỗ trợ?
 
-- 🐛 Issues: [GitHub Issues](https://github.com/TranYenNhi04/cn-da22ttb-tranthiyennhi-filmflow-react/issues)
-- 📧 Email: tranthiyennhi.tvu@gmail.com
+- 📧 Email: nhi96942@gmail.com
 - 💻 GitHub: [@TranYenNhi04](https://github.com/TranYenNhi04)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ and ☕**
+**Made with YenNhi**
 
 ⭐ Star us on GitHub — it helps!
 
