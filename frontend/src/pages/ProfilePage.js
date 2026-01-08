@@ -53,6 +53,13 @@ export default function ProfilePage({ onMovieClick }) {
   }, []);
 
   const fetchProfile = async (userId, skipCache = false) => {
+    // Skip if Anonymous user
+    if (!userId || userId === 'Anonymous') {
+      setLoading(false);
+      setInitialLoad(false);
+      return;
+    }
+    
     // Try cache first for instant display (unless skipCache is true)
     if (!skipCache) {
       try {

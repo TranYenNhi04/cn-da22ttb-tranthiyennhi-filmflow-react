@@ -142,6 +142,12 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
     const saveVideoProgress = async (movieId, timestamp, duration) => {
         if (!movieId || timestamp === null || timestamp === undefined) return;
         
+        // Don't save if timestamp is too small (less than 5 seconds) to avoid auto-save on load
+        if (timestamp < 5) {
+            console.debug('Skipping progress save - timestamp too small:', timestamp);
+            return;
+        }
+        
         // Save to state and localStorage
         const newProgress = {
             ...videoProgress,
@@ -155,11 +161,17 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
             console.warn('Failed to save progress to localStorage:', e);
         }
         
-        // Save to backend watch history
+        // Save to backend watch history ONLY if user is logged in (not Anonymous)
         try {
             const stored = localStorage.getItem('user');
             const user = stored ? JSON.parse(stored) : null;
-            const userId = user?.userId || 'Anonymous';
+            const userId = user?.userId;
+            
+            // Skip if no user or user is Anonymous
+            if (!userId || userId === 'Anonymous') {
+                console.debug('Skipping watch history save - user not logged in');
+                return;
+            }
             
             await fetch(`${API_BASE}/watch-history`, {
                 method: 'POST',
@@ -528,13 +540,12 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
             });
             if (response.ok) {
                 setReviewRating(star);
-                alert('Cảm ơn bạn đã đánh giá!');
+                // Success - no alert needed
             } else {
-                alert('Gửi đánh giá thất bại');
+                console.error('Failed to submit rating');
             }
         } catch (err) {
             console.error('Failed to submit rating:', err);
-            alert('Lỗi khi gửi đánh giá. Vui lòng thử lại!');
         }
     };
 
@@ -560,7 +571,7 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                 }
             }
             if (!payload.comment.trim()) {
-                alert('Vui lòng nhập bình luận');
+                // Empty comment - do nothing
                 return;
             }
             const resp = await fetch(`${API_BASE}/movies/${currentMovie.id}/comment`, {
@@ -575,11 +586,10 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                 setComments(prev => ([{ id: Date.now(), movieId: currentMovie.id, userId: payload.userId, display_name: displayName, comment: payload.comment, timestamp: new Date().toISOString() }, ...prev]));
                 setCommentText('');
             } else {
-                alert('Gửi bình luận thất bại');
+                console.error('Failed to submit comment');
             }
         } catch (e) {
             console.error('Failed to submit comment', e);
-            alert('Lỗi khi gửi bình luận');
         }
     };
 
@@ -678,10 +688,20 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         
         const interval = setInterval(() => {
             try {
+                // Check if player is actually playing before saving
+                if (player && typeof player.getPlayerState === 'function') {
+                    const state = player.getPlayerState();
+                    // YT.PlayerState.PLAYING = 1
+                    if (state !== 1) {
+                        return; // Don't save if not playing
+                    }
+                }
+                
                 if (player && typeof player.getCurrentTime === 'function' && typeof player.getDuration === 'function') {
                     const currentTime = player.getCurrentTime();
                     const duration = player.getDuration();
-                    if (currentTime > 0 && duration > 0) {
+                    // Only save if video has actually played for a meaningful amount
+                    if (currentTime > 5 && duration > 0) {
                         saveVideoProgress(currentMovie.id, currentTime, duration);
                     }
                 }
@@ -698,10 +718,17 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
         const handleBeforeUnload = () => {
             if (currentMovie && player) {
                 try {
-                    const currentTime = player.getCurrentTime();
-                    const duration = player.getDuration();
-                    if (currentTime > 0) {
-                        saveVideoProgress(currentMovie.id, currentTime, duration);
+                    // Only save if video is playing and user has watched more than 5 seconds
+                    if (typeof player.getPlayerState === 'function') {
+                        const state = player.getPlayerState();
+                        // Only save if was playing (1) or paused after playing
+                        if (state === 1 || state === 2) {
+                            const currentTime = player.getCurrentTime();
+                            const duration = player.getDuration();
+                            if (currentTime > 5) {
+                                saveVideoProgress(currentMovie.id, currentTime, duration);
+                            }
+                        }
                     }
                 } catch (e) {}
             }
@@ -799,10 +826,13 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                                                                         const saveInterval = setInterval(() => {
                                                                             try {
                                                                                 const player = playerRef.current;
-                                                                                if (player && typeof player.getCurrentTime === 'function') {
+                                                                                if (player && typeof player.getCurrentTime === 'function' && typeof player.getPlayerState === 'function') {
+                                                                                    // Only save if video is actually playing
+                                                                                    const playerState = player.getPlayerState();
                                                                                     const currentTime = player.getCurrentTime();
                                                                                     const duration = player.getDuration();
-                                                                                    if (currentTime > 0) {
+                                                                                    // YT.PlayerState.PLAYING = 1
+                                                                                    if (playerState === 1 && currentTime > 5) {
                                                                                         saveVideoProgress(currentMovie.id, currentTime, duration);
                                                                                     }
                                                                                 }
@@ -813,12 +843,15 @@ export default function RecommendationsPage({ onBack, initialMovie }) {
                                                                         return () => clearInterval(saveInterval);
                                                                     },
                                                                     'onStateChange': (event) => {
-                                                                        // Save when paused
+                                                                        // Save when paused (only if watched more than 5 seconds)
                                                                         if (event.data === window.YT.PlayerState.PAUSED) {
                                                                             try {
                                                                                 const currentTime = event.target.getCurrentTime();
                                                                                 const duration = event.target.getDuration();
-                                                                                saveVideoProgress(currentMovie.id, currentTime, duration);
+                                                                                // Only save if user has actually watched the video
+                                                                                if (currentTime > 5) {
+                                                                                    saveVideoProgress(currentMovie.id, currentTime, duration);
+                                                                                }
                                                                             } catch (e) {}
                                                                         }
                                                                     }

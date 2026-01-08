@@ -95,7 +95,7 @@ export default function CollectionsPage({ onMovieClick }) {
         {/* Header */}
         <div className="collections-header">
           <h1>🎬 Bộ Sưu Tập Phim</h1>
-          <p>Khám phá những bộ sưu tập phim được cố gắng sắp xếp</p>
+          <p>Khám phá những bộ sưu tập phim được tuyển chọn kỹ lưỡng</p>
         </div>
 
         {/* Collection Tabs */}

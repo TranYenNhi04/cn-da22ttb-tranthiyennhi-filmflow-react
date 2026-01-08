@@ -971,8 +971,15 @@ class WatchHistoryRequest(BaseModel):
 async def add_watch_history_new(request: WatchHistoryRequest, db: Session = Depends(get_db)):
     """Ghi lại lịch sử xem phim."""
     try:
-        user_id = (request.user_id or "Anonymous").strip() or "Anonymous"
+        user_id = (request.user_id or "").strip()
         movie_id = str(request.movie_id)
+        
+        # Reject Anonymous users to prevent shared watch history
+        if not user_id or user_id == "Anonymous":
+            raise HTTPException(
+                status_code=400, 
+                detail="Watch history requires authenticated user. Please login."
+            )
         
         from app.data.db_postgresql import add_watch_history, get_or_create_user
         
@@ -1350,6 +1357,10 @@ def get_user_watchlist_movies(user_id: str, db: Session = Depends(get_db)):
 def get_user_watched_movies(user_id: str, db: Session = Depends(get_db)):
     """Lấy danh sách phim đã xem"""
     try:
+        # Never return watch history for Anonymous users
+        if not user_id or user_id == "Anonymous":
+            return {"movies": []}
+        
         from app.data.db_postgresql import get_watch_history as pg_get_history
         history = pg_get_history(db, user_id, limit=50)
         movies = []
@@ -1426,6 +1437,13 @@ def update_watch_progress(
 ):
     """Cập nhật tiến độ xem phim"""
     try:
+        # Reject Anonymous users to prevent shared watch history
+        if not user_id or user_id == "Anonymous":
+            raise HTTPException(
+                status_code=400, 
+                detail="Watch progress requires authenticated user. Please login."
+            )
+        
         movie_id_str = str(movie_id)
         add_watch_history(db, user_id, movie_id_str, progress, completed)
         return {"success": True, "progress": progress, "completed": completed}

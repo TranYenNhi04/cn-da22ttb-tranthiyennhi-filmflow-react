@@ -68,10 +68,10 @@ export default function HomePage({ onMovieClick }) {
   const [watchlist, setWatchlist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingSections, setLoadingSections] = useState({
-    trending: true,
-    featured: true,
-    topRated: true,
-    new: true
+    trending: false,  // Start with false, will only show if no cached data
+    featured: false,
+    topRated: false,
+    new: false
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -160,11 +160,18 @@ export default function HomePage({ onMovieClick }) {
 
   // Map Vietnamese genre names to English equivalents
   const genreMap = {
-    'action': ['action', 'hành động'],
-    'comedy': ['comedy', 'hài'],
-    'drama': ['drama', 'chính kịch'],
-    'horror': ['horror', 'kinh dị'],
-    'romance': ['romance', 'lãng mạn']
+    'action': ['action', 'hành động', 'hanh dong'],
+    'comedy': ['comedy', 'hài', 'hai', 'hài hước'],
+    'drama': ['drama', 'chính kịch', 'chinh kich'],
+    'horror': ['horror', 'kinh dị', 'kinh di', 'thriller'],
+    'romance': ['romance', 'lãng mạn', 'lang man', 'romantic'],
+    'sci-fi': ['science fiction', 'sci-fi', 'scifi', 'khoa học viễn tưởng', 'fantasy'],
+    'thriller': ['thriller', 'kinh dị', 'hồi hộp'],
+    'adventure': ['adventure', 'phiêu lưu', 'phieu luu'],
+    'crime': ['crime', 'hình sự', 'tội phạm'],
+    'animation': ['animation', 'hoạt hình', 'anime'],
+    'family': ['family', 'gia đình'],
+    'mystery': ['mystery', 'bí ẩn', 'detective']
   };
 
   const filterMovies = (movies) => {
@@ -260,6 +267,10 @@ export default function HomePage({ onMovieClick }) {
       const cacheKey = `cached_recs_${recType}_${userId || 'public'}`;
       
       // INSTANT DISPLAY: Load from cache FIRST, show immediately
+      let hasTrendingCache = false;
+      let hasFeaturedCache = false;
+      let hasNewCache = false;
+      
       try {
         // Load watchlist from cache FIRST
         if (userId) {
@@ -282,7 +293,7 @@ export default function HomePage({ onMovieClick }) {
             if (parsed.movies && parsed.movies.length > 0) {
               setTrendingMovies(parsed.movies);
               setHeroMovies(parsed.movies.slice(0, 20));
-              setLoadingSections(prev => ({ ...prev, trending: false }));
+              hasTrendingCache = true;
             }
           } catch (e) {}
         }
@@ -298,7 +309,7 @@ export default function HomePage({ onMovieClick }) {
               setFeaturedMovies(featured);
               setAllMovies(movies);
               setTopRatedMovies([...movies].sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0)).slice(0, 12));
-              setLoadingSections(prev => ({ ...prev, featured: false, topRated: false }));
+              hasFeaturedCache = true;
             }
           } catch (e) {}
         }
@@ -310,12 +321,27 @@ export default function HomePage({ onMovieClick }) {
             const parsed = JSON.parse(newCache);
             if (parsed.movies && parsed.movies.length > 0) {
               setNewMovies(parsed.movies);
-              setLoadingSections(prev => ({ ...prev, new: false }));
+              hasNewCache = true;
             }
           } catch (e) {}
         }
+        
+        // Only show loading for sections without cache
+        setLoadingSections({
+          trending: !hasTrendingCache,
+          featured: !hasFeaturedCache,
+          topRated: !hasFeaturedCache,
+          new: !hasNewCache
+        });
       } catch (e) {
         console.warn('Cache load failed:', e);
+        // If cache fails, show loading
+        setLoadingSections({
+          trending: true,
+          featured: true,
+          topRated: true,
+          new: true
+        });
       }
       
       // BACKGROUND FETCH: Update with fresh data without blocking UI
@@ -412,8 +438,8 @@ export default function HomePage({ onMovieClick }) {
       }
 
       // PRIORITY 2: Background fetches (don't block UI)
-      // Fetch user data from PostgreSQL
-      if (userId) {
+      // Fetch user data from PostgreSQL - ONLY for authenticated users (not Anonymous)
+      if (userId && userId !== 'Anonymous') {
         try {
           const [historyRes, watchlistRes] = await Promise.all([
             fetch(`${API_BASE}/user/${userId}/watched`),
@@ -574,29 +600,36 @@ export default function HomePage({ onMovieClick }) {
           <div className="filter-group">
             <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} className="filter-select">
               <option value="all">Tất cả thể loại</option>
-              <option value="action">Hành động</option>
-              <option value="comedy">Hài</option>
-              <option value="drama">Chính kịch</option>
-              <option value="horror">Kinh dị</option>
-              <option value="romance">Lãng mạn</option>
+              <option value="action">⚔️ Hành động</option>
+              <option value="comedy">😂 Hài</option>
+              <option value="drama">🎭 Chính kịch</option>
+              <option value="horror">👻 Kinh dị</option>
+              <option value="romance">💕 Lãng mạn</option>
+              <option value="sci-fi">🚀 Khoa học viễn tưởng</option>
+              <option value="adventure">🗺️ Phiêu lưu</option>
+              <option value="thriller">🔪 Thriller</option>
+              <option value="crime">🔫 Hình sự</option>
+              <option value="animation">🎨 Hoạt hình</option>
+              <option value="family">👨‍👩‍👧 Gia đình</option>
+              <option value="mystery">🔍 Bí ẩn</option>
             </select>
           </div>
 
           <div className="filter-group">
             <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="filter-select">
-              <option value="all">Tất cả năm</option>
-              <option value="2024">2024</option>
-              <option value="2023">2023</option>
-              <option value="2020-2022">2020-2022</option>
-              <option value="older">Trước 2020</option>
+              <option value="all">📅 Tất cả năm</option>
+              <option value="2024">🆕 2024+</option>
+              <option value="2023">📆 2023</option>
+              <option value="2020-2022">🗓️ 2020-2022</option>
+              <option value="older">⏪ Trước 2020</option>
             </select>
           </div>
 
           <div className="filter-group">
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="filter-select">
-              <option value="rating">Đánh giá cao</option>
-              <option value="newest">Mới nhất</option>
-              <option value="title">Tên A-Z</option>
+              <option value="rating">⭐ Đánh giá cao</option>
+              <option value="newest">🆕 Mới nhất</option>
+              <option value="title">🔤 Tên A-Z</option>
             </select>
           </div>
         </div>
@@ -633,15 +666,24 @@ export default function HomePage({ onMovieClick }) {
           </div>
           <div className="movie-grid">
             {watchHistory.slice(0, 12).map((entry) => {
-              const movie = allMovies.find(m => m.id === entry.movieId);
-              return movie ? (
+              // Use movie data directly from watch history entry
+              const movie = {
+                id: entry.movieId || entry.id,
+                title: entry.title,
+                poster_url: entry.poster_url,
+                poster_path: entry.poster_path,
+                year: entry.year,
+                vote_average: entry.vote_average
+              };
+              
+              return (
                 <MovieCard 
-                  key={entry.movieId} 
+                  key={entry.movieId || entry.id} 
                   movie={movie} 
                   commentCounts={commentCounts} 
                   onClick={onMovieClick}
                 />
-              ) : null;
+              );
             })}
           </div>
         </section>
